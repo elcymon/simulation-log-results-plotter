@@ -1,0 +1,18 @@
+# Blacklist everything
+*
+
+# Whitelist all directories
+!*/
+
+# Whitelist the python scripts
+
+!*.py
+
+# Whitelist .gitignore
+!.gitignore
+
+# Whitelist repo_readme file (there are readme.md in lower directories that needs to be ignored, thus the use of rep_readme.md)
+
+!repo_readme.md
+
+
