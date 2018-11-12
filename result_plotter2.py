@@ -49,9 +49,11 @@ class MyPlotter:
     def __init__(self,valid_result):
         self.algorithmList = {}
         self.algorithmNames = {'0':'Random Walk', '10':'Selective Attraction',
+                                '104':'Selective Attraction (4 Att threshold)','102':'Selective Attraction (2 Att threshold)',
                                 '20':'Selective Repulsion','30':'Rep-Att',
                                 '31': 'Rep-Att (pure)','50':'Greedy','60':'Optimal',
-                                '305': 'Rep-Att (5Hz)','301':'Rep-Att (1Hz)'}
+                                '305': 'Rep-Att (5Hz)','301':'Rep-Att (1Hz)',
+                                '304': 'Rep-Att (4 Att threshold)', '302': 'Rep-Att (2 Att threshold'}
         self.file_path = ''
         self.plotsNdata = ''
         self.readme = ''
@@ -59,9 +61,11 @@ class MyPlotter:
         self.maxLitter = 200
         self.litStep = self.maxLitter * 10 / 100.0
         self.colorList = {'0':(0.50196078431,0,0), '10':(0.66666666666,0.43137254902,0.15686274509),
+                                '104':(0,0,1),'102':(0,0,0.5),
                                 '20':(0.50196078431,0.50196078431,0),'30':(0.23529411764,0.70588235294,0.29411764705),
                                 '31': (0.27450980392,0.94117647058,0.94117647058),'50':(0,0.50980392156,0.78431372549),'60':(0,0,0.50196078431),
-                                '305': (0.94117647058,0.19607843137,0.90196078431),'301':(0.98039215686,0.74509803921,0.74509803921)}
+                                '305': (0.94117647058,0.19607843137,0.90196078431),'301':(0.98039215686,0.74509803921,0.74509803921),
+                                '304': (0,0,0), '302': (0.7,0.7,0.7)}
         # mpl.style.use('seaborn-colorblind')
 
     def initAlgorithm(self,id,d):
@@ -221,7 +225,7 @@ class MyPlotter:
     def plotSwarmTrajectory(self):
         '''Goes through each algorithm and plot trajectory of one simulation'''
         for i in self.algorithmList:
-            sampleSim = self.algorithmList[i].simList[0]
+            sampleSim = self.algorithmList[i].simList[1]
             allSimTimes = glob.glob(self.file_path + sampleSim + '_m_4wrobot*')
             allX = []
             allY = []
