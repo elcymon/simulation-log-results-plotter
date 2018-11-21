@@ -48,24 +48,16 @@ class MyPlotter:
     '''Class for plotting/visualizing my simulation results'''
     def __init__(self,valid_result):
         self.algorithmList = {}
-        self.algorithmNames = {'0':'Random Walk', '10':'Selective Attraction',
-                                '104':'Selective Attraction (4 Att threshold)','102':'Selective Attraction (2 Att threshold)',
-                                '20':'Selective Repulsion','30':'Rep-Att',
-                                '31': 'Rep-Att (pure)','50':'Greedy','60':'Optimal',
-                                '305': 'Rep-Att (5Hz)','301':'Rep-Att (1Hz)',
-                                '304': 'Rep-Att (4 Att threshold)', '302': 'Rep-Att (2 Att threshold'}
         self.file_path = ''
         self.plotsNdata = ''
         self.readme = ''
         self.valid_result = valid_result #row to start reading data from
         self.maxLitter = 200
         self.litStep = self.maxLitter * 10 / 100.0
-        self.colorList = {'0':(0.50196078431,0,0), '10':(0.66666666666,0.43137254902,0.15686274509),
-                                '104':(0,0,1),'102':(0,0,0.5),
-                                '20':(0.50196078431,0.50196078431,0),'30':(0.23529411764,0.70588235294,0.29411764705),
-                                '31': (0.27450980392,0.94117647058,0.94117647058),'50':(0,0.50980392156,0.78431372549),'60':(0,0,0.50196078431),
-                                '305': (0.94117647058,0.19607843137,0.90196078431),'301':(0.98039215686,0.74509803921,0.74509803921),
-                                '304': (0,0,0), '302': (0.7,0.7,0.7)}
+        self.colorList = {(0.50196078431,0,0), (0.66666666666,0.43137254902,0.15686274509),(0,0,1),(0,0,0.5),
+        (0.50196078431,0.50196078431,0),(0.23529411764,0.70588235294,0.29411764705),(0.27450980392,0.94117647058,0.94117647058),
+        (0,0.50980392156,0.78431372549),(0,0,0.50196078431),(0.94117647058,0.19607843137,0.90196078431),
+        (0.98039215686,0.74509803921,0.74509803921),(0,0,0), (0.7,0.7,0.7)}
         # mpl.style.use('seaborn-colorblind')
 
     def initAlgorithm(self,id,d):
@@ -80,7 +72,7 @@ class MyPlotter:
             self.algorithmList[id].params[param[0]] = param[1]
     
     def appendSimTime(self,id,d):
-        stat = d[-2]
+        stat = d[0]
         stat = stat.split(':')
         start_time = stat[1]
         self.algorithmList[id].simList.append(start_time)
@@ -136,13 +128,13 @@ class MyPlotter:
                 data = data.rstrip('\n')
                 d = data.split(',')
                 if len(d) > 1:
-                    exp_id = d[0]
+                    exp_id = d[1]
                     exp_id = exp_id.split(':')
                     if exp_id[1] in self.algorithmList:
                         self.appendSimTime(exp_id[1],d)
                     else:
                         #new algorithm found
-                        self.initAlgorithm(exp_id[1],d[1:])
+                        self.initAlgorithm(exp_id[1],d)
 
     def processLitterData(self):
         for i in self.algorithmList:
@@ -178,7 +170,7 @@ class MyPlotter:
                 row += 1
             for jj,pct in enumerate(pctNames):
                 if jj == 0:
-                    ws.write(row,jj,int(i))
+                    ws.write(row,jj,i)
                 else:
                     ws.write(row,jj,float(self.algorithmList[i].litterCounts[pct][-2]))
             row += 1
@@ -188,7 +180,7 @@ class MyPlotter:
         for i in algkeys:
             for jj,pct in enumerate(pctNames):
                 if jj == 0:
-                    ws.write(row,jj,int(i))
+                    ws.write(row,jj,i)
                 else:
                     ws.write(row,jj,float(self.algorithmList[i].litterCounts[pct][-1]))
             row += 1
@@ -210,9 +202,9 @@ class MyPlotter:
 
             # print(pctTimes)
             # print(pcts)
-            ax.fill_between(pcts,pctTimes-pctErrors,pctTimes+pctErrors,alpha=0.3,color=self.colorList[i])
-            ax.plot(pcts,pctTimes,label=self.algorithmNames[i],color=self.colorList[i])
-            ax.scatter(pcts,pctTimes,color=self.colorList[i])
+            ax.fill_between(pcts,pctTimes-pctErrors,pctTimes+pctErrors,alpha=0.3)#,color=self.colorList[i])
+            ax.plot(pcts,pctTimes,label=i)#,color=self.colorList[i])
+            ax.scatter(pcts,pctTimes)#,color=self.colorList[i])
         # xmin,xmax = ax.get_xlim()
         ax.set_xlim(0,110)
         ax.set_ylim(ymin=0)
@@ -262,7 +254,7 @@ class MyPlotter:
             cax = divider.append_axes("right",size='5%',pad=0.1)
             a1=f_rob.colorbar(pcm,cax=cax)
             f_rob.tight_layout()
-            f_rob.savefig(self.plotsNdata + 'robot_trajectory' + self.algorithmNames[i] +
+            f_rob.savefig(self.plotsNdata + 'robot_trajectory'+
                             '_' + sampleSim + '.pdf')
 
 
