@@ -8,6 +8,7 @@ import numpy as np
 import xlwt
 import matplotlib.pyplot as plt
 import pathlib #for creating directories
+import sys
 
 class Algorithm:
     '''This class maps an algorithm ID to experiment time, and sets all algorithm parameters'''
@@ -38,7 +39,7 @@ class Algorithm:
         # print(self.dat_dtype)
         while len(sim_lit_data) < len(self.dat_dtype):
             '''padding with invalid data if data incomplete'''
-            sim_lit_data.append(-99.0)
+            sim_lit_data.append(np.nan)
         np_sim_lit_data = np.array(tuple(sim_lit_data),self.dat_dtype)
         self.litterCounts = np.r_[self.litterCounts,[np_sim_lit_data]]
         
@@ -46,7 +47,8 @@ class Algorithm:
 
 class MyPlotter:
     '''Class for plotting/visualizing my simulation results'''
-    def __init__(self,valid_result):
+    def __init__(self,valid_result,createReadme):
+        self.createReadme = createReadme
         self.algorithmList = {}
         self.file_path = ''
         self.plotsNdata = ''
@@ -122,7 +124,23 @@ class MyPlotter:
         self.plotsNdata = self.file_path + 'plotsNdata/'
         pathlib.Path(self.plotsNdata).mkdir(parents=False,exist_ok=True)
         readmeFile = self.file_path + 'readme.md'
+        if self.createReadme == 'createReadme':
+            readmeFile = self.file_path + 'readme2.md'
+            #if readme file does not exist, create a readme.md file
+            with open(readmeFile,'w+') as f:
+                for name in glob.glob(self.file_path + '*litter*'):
+                    name = name.replace('\\','/')
+                    name = name.split('/')
+                    name = name[-1].split('_')
+                    prefix = name[0]
+                    algID = prefix.split('-')
+                    algID = '-'.join(algID[1:-7])
+                    lineData = 'prefix:{},ID:{}\n'.format(prefix,algID)
+                    f.write(lineData)
 
+            
+                
+        
         with open(readmeFile) as f:
             for data in f:
                 data = data.rstrip('\n')
@@ -254,14 +272,14 @@ class MyPlotter:
             cax = divider.append_axes("right",size='5%',pad=0.1)
             a1=f_rob.colorbar(pcm,cax=cax)
             f_rob.tight_layout()
-            f_rob.savefig(self.plotsNdata + 'robot_trajectory'+
+            f_rob.savefig(self.plotsNdata + 'robot_trajectory'
                             '_' + sampleSim + '.pdf')
 
 
 
 if __name__ == '__main__':
     valid_data = 0
-    plotObj = MyPlotter(valid_data)
+    plotObj = MyPlotter(valid_data,sys.argv[1])
     plotObj.initSimulations()
     print(plotObj.algorithmList.keys())
     
