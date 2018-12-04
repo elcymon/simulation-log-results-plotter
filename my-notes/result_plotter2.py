@@ -28,7 +28,7 @@ class Algorithm:
         self.dat_dtype = np.dtype({'names':names,'formats':formats})
         
         self.litterCounts = pd.DataFrame(columns=range(0,101,10)) # each column should represent the time taken to forage 10pct of objects
-        self.wall_bounces = pd.DataFrame(columns=range(0,101,10))#self.setup_Matrix('wall_bounces')
+        # self.wall_bounces = pd.DataFrame(columns=range(0,101,10))#self.setup_Matrix('wall_bounces')
         
 
     def setup_Matrix(self,record_type):
@@ -69,8 +69,14 @@ class MyPlotter:
         (0,0.50980392156,0.78431372549),(0,0,0.50196078431),(0.94117647058,0.19607843137,0.90196078431),
         (0.98039215686,0.74509803921,0.74509803921),(0,0,0), (0.7,0.7,0.7)}
 
-        
-
+        self.all_log_desired_data_list = ['linear_dist','rot_dist','litter_collected','litter_deposited',
+                                    'wall_bounces', 'neighbour_bounces','t_obstacle_avoidance','t_searching','t_oa_searching','t_go4litter','t_oa_go4litter',
+                                    't_litter_processing','t_homing','t_oa_homing']
+        self.all_desired_data_dict = {}
+        for param in self.all_log_desired_data_list:#each data to process is a dict of dict
+            self.all_desired_data_dict[param] = {'Mean': pd.DataFrame(columns=range(0,101,10)), 'CI95': pd.DataFrame(columns=range(0,101,10))}
+        # self.wall_bounces = {'Mean': pd.DataFrame(columns=range(0,101,10)), 'CI95': pd.DataFrame(columns=range(0,101,10))}
+        self.litter_data ={'Mean': pd.DataFrame(columns=range(0,101,10)), 'CI95': pd.DataFrame(columns=range(0,101,10))}
 
         
         self.count = 0
@@ -151,6 +157,20 @@ class MyPlotter:
         self.file_path +=  '/'
         self.plotsNdata = self.file_path + 'plotsNdata/'
         pathlib.Path(self.plotsNdata).mkdir(parents=False,exist_ok=True)
+
+        ## preparing the xcel writer
+        # self.writer = pd.ExcelWriter(self.plotsNdata + 'Results.xlsx',engine = 'xlsxwriter')
+        # #create worksheet for wall_bounces data
+        # workbook = self.writer.book
+        # # worksheet = workbook.add_worksheet('wall_bounces')
+        # self.writer.sheets['wall_bounces'] =  workbook.add_worksheet('wall_bounces')
+        
+        # #create worksheet for litter_data data
+        # # workbook = self.writer.book
+        # # worksheet = workbook.add_worksheet('litter_data')
+        # self.writer.sheets['litter_data'] = workbook.add_worksheet('litter_data')
+        
+
         readmeFile = self.file_path + 'readme.md'
         if self.createReadme == 'createReadme':
             readmeFile = self.file_path + 'readme2.md'
@@ -186,13 +206,21 @@ class MyPlotter:
         ## Call function that will process information for particular logged information from the robot files
         countAlg = len(self.algorithmList)
         progAlg = 0
-        for i in self.algorithmList:
+        algKeys = list(self.algorithmList.keys())
+        algKeys.sort()
+        for i in algKeys:
             progAlg += 1
             # print(i)
             litCounts = self.algorithmList[i].litterCounts
             # litCounts = pd.DataFrame(litCounts)
 
-            wall_bounces_all = pd.DataFrame(columns=self.algorithmList[i].wall_bounces.columns)
+            # wall_bounces_all = pd.DataFrame(columns=self.wall_bounces['Mean'].columns)
+            
+
+            all_log_desired_data_dict = {}
+            for param in self.all_log_desired_data_list:#create a dictionary of all desired log data
+                all_log_desired_data_dict[param] = pd.DataFrame(columns=self.all_desired_data_dict[param]['Mean'].columns)
+
             countSmList = len(self.algorithmList[i].simList)
             progSim = 0
             for start_time in self.algorithmList[i].simList:
@@ -204,32 +232,63 @@ class MyPlotter:
                 # print(sim_data.loc[:,1:].values())
                 # input('>')
                 # # 
-                wall_bounces_data = self.get_param_values(start_time,sim_data,'wall_bounces')
-                wall_bounces_all.loc[start_time] = wall_bounces_data
-                # wall_bounces_all = self.algorithmList[i].append_Counts(wall_bounces_data,wall_bounces_all)
+                all_log_desired_data = self.get_param_values(start_time,sim_data,self.all_log_desired_data_list)
+                # print(all_log_desired_data)
+                # input('>')
+
+                for param in self.all_log_desired_data_list:#update the values to be stored in each dataframe used to save logged data
+                    # print('in',all_log_desired_data[param])
+                    all_log_desired_data_dict[param].loc[start_time] = all_log_desired_data[param].values
+                    # print('saved',all_log_desired_data_dict[param])
+                    # input('>')
+                    
+                # wall_bounces_all.loc[start_time] = all_log_desired_data['wall_bounces']
+                # wall_bounces_all = self.algorithmList[i].append_Counts(all_log_desired_data,wall_bounces_all)
                 
                 print('\r{}/{}: {}/{}'.format(progAlg,countAlg,progSim,countSmList),end='')
             # bounce_data = wall_bounces_all[1:]
             # bounces_mean = ['mean']
             # print(bounce_data)
             # bounces_mean.append(np.nanmean(bounce_data))
-            bounces_mean = np.nanmean(wall_bounces_all,axis=0)
-            bounces_std  = np.nanstd(wall_bounces_all,axis=0)
-            bounces_CI95 = 1.96*bounces_std/np.sqrt(wall_bounces_all.count(axis=0))
+            
+            for param in self.all_log_desired_data_list:
+                # print(param)
+                # print(all_log_desired_data_dict[param])
+                # print(all_log_desired_data_dict[param].count(axis=0))
+                #compute mean and confidence interval for each desired parameter
+                self.all_desired_data_dict[param]['Mean'].loc[i],self.all_desired_data_dict[param]['CI95'].loc[i] = \
+                np.nanmean(all_log_desired_data_dict[param],axis=0), 1.96*np.nanstd(all_log_desired_data_dict[param],axis=0)/np.sqrt(all_log_desired_data_dict[param].count(axis=0))
+            # bounces_mean, bounces_CI95 = np.nanmean(wall_bounces_all,axis=0), 1.96*np.nanstd(wall_bounces_all,axis=0)/np.sqrt(wall_bounces_all.count(axis=0))
+            # bounces_std  = np.nanstd(wall_bounces_all,axis=0)
+            # bounces_CI95 = 1.96*bounces_std/np.sqrt(wall_bounces_all.count(axis=0))
             # print(len(bounces_mean),len(self.algorithmList[i].wall_bounces.columns))
-            self.algorithmList[i].wall_bounces.loc['mean'] = bounces_mean
-            self.algorithmList[i].wall_bounces.loc['CI95'] = bounces_CI95
+            # self.wall_bounces['Mean'].loc[i], self.wall_bounces['CI95'].loc[i] = bounces_mean, bounces_CI95
+            # self.wall_bounces['CI95'].loc[i] = bounces_CI95
+        
+        #write wall_bounces data to excel file
+        # self.wall_bounces['Mean'].to_excel(self.writer,sheet_name='wall_bounces',startcol=0)
+        # self.wall_bounces['CI95'].to_excel(self.writer,sheet_name='wall_bounces',startcol=len(self.wall_bounces['Mean'].columns)+2)
+        # self.writer.save()
             # print()
             # print('bouncesMean\n',bounces_mean)
             # print('stored value in algirthm list\n',self.algorithmList[i].wall_bounces)
 
         
-            
+    def saveResults(self):
+        with pd.ExcelWriter(self.plotsNdata + 'Results.xlsx',engine = 'xlsxwriter') as writer:
+            self.litter_data['Mean'].to_excel(writer,sheet_name='litter_data',startcol=0)
+            self.litter_data['CI95'].to_excel(writer,sheet_name='litter_data',startcol=len(self.litter_data['Mean'].columns)+2)
+            for param in self.all_log_desired_data_list:
+                self.all_desired_data_dict[param]['Mean'].to_excel(writer,sheet_name=param,startcol=0)
+                self.all_desired_data_dict[param]['CI95'].to_excel(writer,sheet_name=param,startcol=len(self.all_desired_data_dict[param]['Mean'].columns) + 2)
+            # self.wall_bounces['Mean'].to_excel(self.writer,sheet_name='wall_bounces',startcol=0)
+            # self.wall_bounces['CI95'].to_excel(self.writer,sheet_name='wall_bounces',startcol=len(self.wall_bounces['Mean'].columns)+2)
+        
         
     def get_param_values(self,start_time,sim_lit_data,param_column):
         sim_lit_data = pd.Series(sim_lit_data)
         # print(sim_lit_data)
-        total_param_value = np.zeros_like(sim_lit_data)
+        total_param_value = []
         # print(total_param_value)
         # input('>')
         for name in glob.glob(self.file_path + start_time + '*robot*'):
@@ -238,13 +297,19 @@ class MyPlotter:
             # print(total_param_value)
             # print(param_list[param_column])
             # print()
-            total_param_value += param_list[param_column]
+            if len(total_param_value) == 0:
+                total_param_value = param_list[param_column]
+            else:
+                total_param_value += param_list[param_column]
         return total_param_value
 
 
 
     def processLitterData(self):
-        for i in self.algorithmList:
+        
+        algKeys = list(self.algorithmList.keys())
+        algKeys.sort()
+        for i in algKeys:
             pctNames = self.algorithmList[i].litterCounts.columns
             pctMean = ['mean']
             confidenceInterval = ['95% Confidence Interval']
@@ -255,8 +320,13 @@ class MyPlotter:
                 stDev = np.nanstd(litData)
                 confidenceInterval.append(1.96*stDev/np.sqrt(litData.count()))
             # if pctMean[0] not in self.algorithmList[i].litterCounts.index:
-            self.algorithmList[i].litterCounts.loc[pctMean[0]] = pctMean[1:]
-            self.algorithmList[i].litterCounts.loc[confidenceInterval[0]] = confidenceInterval[1:]
+            self.litter_data['Mean'].loc[i] = pctMean[1:]
+            self.litter_data['CI95'].loc[i] = confidenceInterval[1:]
+        #write litter_data data to excel file
+        # self.litter_data['Mean'].to_excel(self.writer,sheet_name='litter_data',startcol=0)
+        # self.litter_data['CI95'].to_excel(self.writer,sheet_name='litter_data',startcol=len(self.litter_data['Mean'].columns)+2)
+        # self.writer.save()
+        
 
     def get_robot_data(self,filename):
 
@@ -305,7 +375,7 @@ class MyPlotter:
                 else:
                     ws.write(row,jj,str(self.algorithmList[i].litterCounts[pct][-1]))
             row += 1
-        wb.save(self.plotsNdata+'Results.xls')
+        wb.save(self.plotsNdata+'Results.xlsx')
 
     def plotLitterData(self):
         fig = plt.figure()
