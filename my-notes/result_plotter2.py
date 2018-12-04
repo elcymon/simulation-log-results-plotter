@@ -9,6 +9,7 @@ import xlwt
 import matplotlib.pyplot as plt
 import pathlib #for creating directories
 import sys
+import pandas as pd
 
 class Algorithm:
     '''This class maps an algorithm ID to experiment time, and sets all algorithm parameters'''
@@ -18,30 +19,37 @@ class Algorithm:
         self.simList = []
         self.params = {}
         self.myColor = ''
-
-    def setup_litterMatrix(self):
         names = ['Simulation times']
         names.extend([str(i) for i in range(0,101,10)])
 
         formats = ['f4']*11
         formats.insert(0,'|U20')
         
-        tHeader = ['Sim Time']
-        tHeader.extend(range(0,101,10))
-        
         self.dat_dtype = np.dtype({'names':names,'formats':formats})
-        self.litterCounts = np.zeros(1,self.dat_dtype)#30 to represent iteration counts, but can change automatically.
-        self.litterCounts[0] = np.array(tuple(tHeader),self.dat_dtype)
+        
+        self.litterCounts = pd.DataFrame(columns=range(0,101,10)) # each column should represent the time taken to forage 10pct of objects
+        self.wall_bounces = pd.DataFrame(columns=range(0,101,10))#self.setup_Matrix('wall_bounces')
+        
 
-    def append_litterCounts(self,sim_lit_data):
+    def setup_Matrix(self,record_type):
+        tHeader = [record_type]
+        tHeader.extend(range(0,101,10))
+        paramVar = pd.DataFrame(columns=tHeader)
+        # self.dat_dtype = np.dtype({'names':names,'formats':formats})
+        paramVar = np.zeros(1,self.dat_dtype)#30 to represent iteration counts, but can change automatically.
+        paramVar[0] = np.array(tuple(tHeader),self.dat_dtype)
+        return paramVar
+
+    def append_Counts(self,sim_lit_data,paramVar):
         #print(len(self.litterCounts[0]),len(sim_lit_data))
         # print(sim_lit_data)
         # print(self.dat_dtype)
         while len(sim_lit_data) < len(self.dat_dtype):
             '''padding with invalid data if data incomplete'''
-            sim_lit_data.append(np.nan)
+            sim_lit_data = np.append(sim_lit_data,np.nan)
         np_sim_lit_data = np.array(tuple(sim_lit_data),self.dat_dtype)
-        self.litterCounts = np.r_[self.litterCounts,[np_sim_lit_data]]
+        paramVar = np.r_[paramVar,[np_sim_lit_data]]
+        return paramVar
         
 
 
@@ -60,11 +68,20 @@ class MyPlotter:
         (0.50196078431,0.50196078431,0),(0.23529411764,0.70588235294,0.29411764705),(0.27450980392,0.94117647058,0.94117647058),
         (0,0.50980392156,0.78431372549),(0,0,0.50196078431),(0.94117647058,0.19607843137,0.90196078431),
         (0.98039215686,0.74509803921,0.74509803921),(0,0,0), (0.7,0.7,0.7)}
+
+        
+
+
+        
+        self.count = 0
+
+        # print('plotter created')
         # mpl.style.use('seaborn-colorblind')
 
     def initAlgorithm(self,id,d):
+        
         self.algorithmList[id] = Algorithm(id)
-        self.algorithmList[id].setup_litterMatrix()#initialize setup matrix
+        # self.algorithmList[id].setup_Matrix(self.algorithmList[id].litterCounts)#initialize setup matrix
         # print('length',len(self.algorithmList))
         # self.algorithmList[id].myColor = self.colorList[id]
         self.appendSimTime(id,d)
@@ -75,12 +92,19 @@ class MyPlotter:
     
     def appendSimTime(self,id,d):
         stat = d[0]
+        # print(stat)
         stat = stat.split(':')
         start_time = stat[1]
         self.algorithmList[id].simList.append(start_time)
         
         sim_lit_data = self.getLitterCount(start_time)
-        self.algorithmList[id].append_litterCounts(sim_lit_data)
+        while len(sim_lit_data[1:]) < len(self.algorithmList[id].litterCounts.columns):
+            sim_lit_data.append(np.nan)
+        self.algorithmList[id].litterCounts.loc[sim_lit_data[0]] = sim_lit_data[1:]
+
+        # self.algorithmList[id].litterCounts = self.algorithmList[id].append_Counts(sim_lit_data,self.algorithmList[id].litterCounts)
+
+        
 
         
     def getLitterCount(self,start_time):
@@ -114,12 +138,16 @@ class MyPlotter:
         return t
 
     
-    def initSimulations(self):
+    def initSimulations(self,file_path=''):
         '''This function selects the folder of the results and matches each 
         simulation times to their respective algorithms'''
-        root = tk.Tk()
-        root.withdraw()
-        self.file_path = filedialog.askdirectory()
+        if file_path == '':
+            root = tk.Tk()
+            root.withdraw()
+            self.file_path = filedialog.askdirectory()
+        else:
+            self.file_path = file_path
+
         self.file_path +=  '/'
         self.plotsNdata = self.file_path + 'plotsNdata/'
         pathlib.Path(self.plotsNdata).mkdir(parents=False,exist_ok=True)
@@ -153,20 +181,95 @@ class MyPlotter:
                     else:
                         #new algorithm found
                         self.initAlgorithm(exp_id[1],d)
+        
+    def processParamData(self):
+        ## Call function that will process information for particular logged information from the robot files
+        countAlg = len(self.algorithmList)
+        progAlg = 0
+        for i in self.algorithmList:
+            progAlg += 1
+            # print(i)
+            litCounts = self.algorithmList[i].litterCounts
+            # litCounts = pd.DataFrame(litCounts)
+
+            wall_bounces_all = pd.DataFrame(columns=self.algorithmList[i].wall_bounces.columns)
+            countSmList = len(self.algorithmList[i].simList)
+            progSim = 0
+            for start_time in self.algorithmList[i].simList:
+                progSim += 1
+                sim_data = litCounts.loc[start_time]
+                # print(start_time)
+                # print(sim_data)
+                # print(sim_data.iloc[0,1:])
+                # print(sim_data.loc[:,1:].values())
+                # input('>')
+                # # 
+                wall_bounces_data = self.get_param_values(start_time,sim_data,'wall_bounces')
+                wall_bounces_all.loc[start_time] = wall_bounces_data
+                # wall_bounces_all = self.algorithmList[i].append_Counts(wall_bounces_data,wall_bounces_all)
+                
+                print('\r{}/{}: {}/{}'.format(progAlg,countAlg,progSim,countSmList),end='')
+            # bounce_data = wall_bounces_all[1:]
+            # bounces_mean = ['mean']
+            # print(bounce_data)
+            # bounces_mean.append(np.nanmean(bounce_data))
+            bounces_mean = np.nanmean(wall_bounces_all,axis=0)
+            bounces_std  = np.nanstd(wall_bounces_all,axis=0)
+            bounces_CI95 = 1.96*bounces_std/np.sqrt(wall_bounces_all.count(axis=0))
+            # print(len(bounces_mean),len(self.algorithmList[i].wall_bounces.columns))
+            self.algorithmList[i].wall_bounces.loc['mean'] = bounces_mean
+            self.algorithmList[i].wall_bounces.loc['CI95'] = bounces_CI95
+            # print()
+            # print('bouncesMean\n',bounces_mean)
+            # print('stored value in algirthm list\n',self.algorithmList[i].wall_bounces)
+
+        
+            
+        
+    def get_param_values(self,start_time,sim_lit_data,param_column):
+        sim_lit_data = pd.Series(sim_lit_data)
+        # print(sim_lit_data)
+        total_param_value = np.zeros_like(sim_lit_data)
+        # print(total_param_value)
+        # input('>')
+        for name in glob.glob(self.file_path + start_time + '*robot*'):
+            robot_data = self.get_robot_data(name)
+            param_list = robot_data.loc[robot_data['time'].isin(sim_lit_data)]
+            # print(total_param_value)
+            # print(param_list[param_column])
+            # print()
+            total_param_value += param_list[param_column]
+        return total_param_value
+
+
 
     def processLitterData(self):
         for i in self.algorithmList:
-            pctNames = self.algorithmList[i].litterCounts.dtype.names
+            pctNames = self.algorithmList[i].litterCounts.columns
             pctMean = ['mean']
             confidenceInterval = ['95% Confidence Interval']
-            for j in pctNames[1:]:
+            for j in pctNames:
                 # print(self.algorithmList[i].litterCounts[j][1:])
-                litData = self.algorithmList[i].litterCounts[j][1:]
-                pctMean.append(np.mean(litData))
-                stDev = np.std(litData)
-                confidenceInterval.append(1.96*stDev/np.sqrt(len(litData)))
-            self.algorithmList[i].append_litterCounts(pctMean)
-            self.algorithmList[i].append_litterCounts(confidenceInterval)
+                litData = self.algorithmList[i].litterCounts[j]
+                pctMean.append(np.nanmean(litData))
+                stDev = np.nanstd(litData)
+                confidenceInterval.append(1.96*stDev/np.sqrt(litData.count()))
+            # if pctMean[0] not in self.algorithmList[i].litterCounts.index:
+            self.algorithmList[i].litterCounts.loc[pctMean[0]] = pctMean[1:]
+            self.algorithmList[i].litterCounts.loc[confidenceInterval[0]] = confidenceInterval[1:]
+
+    def get_robot_data(self,filename):
+
+        robot_data = pd.read_csv(filename,
+                             header=None, sep=':|,',engine='python',
+                             names=['robot','time','x','y','theta','turnP',
+                                    'seen_litter','rep_neigh','rep_sig',
+                                   'call_neigh','call_sig','collected_lit',
+                                   'linear_dist','rot_dist','litter_collected','litter_deposited',
+                                    'wall_bounces', 'neighbour_bounces','t_obstacle_avoidance',
+                                    't_searching','t_oa_searching','t_go4litter','t_oa_go4litter',
+                                    't_litter_processing','t_homing','t_oa_homing','action','state'])
+        return robot_data
 
     def saveLitterDataXLS(self):
         wb = xlwt.Workbook()
@@ -177,7 +280,7 @@ class MyPlotter:
         algkeys = list(self.algorithmList.keys())
         algkeys.sort()
         for i in algkeys:
-            pctNames = list(deepcopy(self.algorithmList[i].litterCounts.dtype.names))
+            pctNames = self.algorithmList[i].litterCounts.columns
             
             if row == 1:
                 for ii,pct in enumerate(pctNames):
@@ -190,7 +293,7 @@ class MyPlotter:
                 if jj == 0:
                     ws.write(row,jj,i)
                 else:
-                    ws.write(row,jj,float(self.algorithmList[i].litterCounts[pct][-2]))
+                    ws.write(row,jj,str(self.algorithmList[i].litterCounts[pct][-2]))
             row += 1
         row += 3
         ws.write(row,0,'95% Confidence Interval')
@@ -200,23 +303,25 @@ class MyPlotter:
                 if jj == 0:
                     ws.write(row,jj,i)
                 else:
-                    ws.write(row,jj,float(self.algorithmList[i].litterCounts[pct][-1]))
+                    ws.write(row,jj,str(self.algorithmList[i].litterCounts[pct][-1]))
             row += 1
         wb.save(self.plotsNdata+'Results.xls')
+
     def plotLitterData(self):
         fig = plt.figure()
         ax = plt.axes()
         algkeys = list(self.algorithmList.keys())
         algkeys.sort()
         for i in algkeys:
-            pcts = list(self.algorithmList[i].litterCounts[0])
-            pcts = np.array(pcts[1:])
-            pctTimes = list(self.algorithmList[i].litterCounts[-2])
+            pcts = self.algorithmList[i].litterCounts.columns
             
-            pctErrors = list(self.algorithmList[i].litterCounts[-1])
-            pctErrors = np.array(pctErrors[1:])
+            pcts = np.array(pcts)
+            pctTimes = list(self.algorithmList[i].litterCounts.loc[-2])
             
-            pctTimes = pctTimes[1:]
+            pctErrors = list(self.algorithmList[i].litterCounts.loc[-1])
+            pctErrors = np.array(pctErrors)
+            
+            pctTimes = pctTimes
 
             # print(pctTimes)
             # print(pcts)
@@ -279,7 +384,13 @@ class MyPlotter:
 
 if __name__ == '__main__':
     valid_data = 0
-    plotObj = MyPlotter(valid_data,sys.argv[1])
+    if len(sys.argv) == 2:
+        plotObj = MyPlotter(valid_data,sys.argv[1])
+    elif len(sys.argv) == 1:
+        plotObj = MyPlotter(valid_data,'oldReadme')
+    else:
+        print('invalid call')
+        exit(0)
     plotObj.initSimulations()
     print(plotObj.algorithmList.keys())
     
