@@ -77,7 +77,7 @@ class MyPlotter:
             self.all_desired_data_dict[param] = {'Mean': pd.DataFrame(columns=range(0,101,10)), 'CI95': pd.DataFrame(columns=range(0,101,10))}
         # self.wall_bounces = {'Mean': pd.DataFrame(columns=range(0,101,10)), 'CI95': pd.DataFrame(columns=range(0,101,10))}
         self.litter_data ={'Mean': pd.DataFrame(columns=range(0,101,10)), 'CI95': pd.DataFrame(columns=range(0,101,10))}
-
+        self.num_successful_robots = {'Mean': pd.DataFrame(columns=range(0,101,10)), 'CI95': pd.DataFrame(columns=range(0,101,10))}
         
         self.count = 0
 
@@ -217,7 +217,10 @@ class MyPlotter:
             # wall_bounces_all = pd.DataFrame(columns=self.wall_bounces['Mean'].columns)
             
 
+            
+            all_num_robots = pd.DataFrame(columns=self.all_desired_data_dict['litter_collected']['Mean'].columns)
             all_log_desired_data_dict = {}
+            
             for param in self.all_log_desired_data_list:#create a dictionary of all desired log data
                 all_log_desired_data_dict[param] = pd.DataFrame(columns=self.all_desired_data_dict[param]['Mean'].columns)
 
@@ -232,16 +235,24 @@ class MyPlotter:
                 # print(sim_data.loc[:,1:].values())
                 # input('>')
                 # # 
-                all_log_desired_data = self.get_param_values(start_time,sim_data,self.all_log_desired_data_list)
+                all_log_desired_data,num_robots = self.get_param_values(start_time,sim_data,self.all_log_desired_data_list)
+                # print(num_robots)
+                if len(all_num_robots.columns) == len(num_robots.values):
+                    all_num_robots.loc[start_time] = num_robots.values
+                    for param in self.all_log_desired_data_list:#update the values to be stored in each dataframe used to save logged data
+                        # print('in',all_log_desired_data[param])
+                        all_log_desired_data_dict[param].loc[start_time] = all_log_desired_data[param].values
+                        # print('saved',all_log_desired_data_dict[param])
+                        # input('>')
+               
+                else:
+                    print('\r\nMismatch Occured\n\r{}/{}: {}/{}\t{}:{} = {}'.format(progAlg,countAlg,progSim,countSmList,start_time,len(all_num_robots.columns),num_robots.values))
+                
+                # input('>')
                 # print(all_log_desired_data)
                 # input('>')
 
-                for param in self.all_log_desired_data_list:#update the values to be stored in each dataframe used to save logged data
-                    # print('in',all_log_desired_data[param])
-                    all_log_desired_data_dict[param].loc[start_time] = all_log_desired_data[param].values
-                    # print('saved',all_log_desired_data_dict[param])
-                    # input('>')
-                    
+                     
                 # wall_bounces_all.loc[start_time] = all_log_desired_data['wall_bounces']
                 # wall_bounces_all = self.algorithmList[i].append_Counts(all_log_desired_data,wall_bounces_all)
                 
@@ -250,7 +261,12 @@ class MyPlotter:
             # bounces_mean = ['mean']
             # print(bounce_data)
             # bounces_mean.append(np.nanmean(bounce_data))
-            
+            # print(all_num_robots)
+            self.num_successful_robots['Mean'].loc[i],self.num_successful_robots['CI95'].loc[i] = \
+            np.nanmean(all_num_robots,axis=0),1.96 * np.nanstd(all_num_robots,axis=0) / np.sqrt(all_num_robots.count(axis=0))
+            # print(self.num_successful_robots['Mean'].loc[i])
+            # print(self.num_successful_robots['CI95'].loc[i])
+            # input('>')
             for param in self.all_log_desired_data_list:
                 # print(param)
                 # print(all_log_desired_data_dict[param])
@@ -278,6 +294,10 @@ class MyPlotter:
         with pd.ExcelWriter(self.plotsNdata + 'Results.xlsx',engine = 'xlsxwriter') as writer:
             self.litter_data['Mean'].to_excel(writer,sheet_name='litter_data',startcol=0)
             self.litter_data['CI95'].to_excel(writer,sheet_name='litter_data',startcol=len(self.litter_data['Mean'].columns)+2)
+            
+            self.num_successful_robots['Mean'].to_excel(writer,sheet_name='num_successful_robots',startcol=0)
+            self.num_successful_robots['CI95'].to_excel(writer,sheet_name='num_successful_robots',startcol=len(self.num_successful_robots['Mean'].columns)+2)
+            
             for param in self.all_log_desired_data_list:
                 self.all_desired_data_dict[param]['Mean'].to_excel(writer,sheet_name=param,startcol=0)
                 self.all_desired_data_dict[param]['CI95'].to_excel(writer,sheet_name=param,startcol=len(self.all_desired_data_dict[param]['Mean'].columns) + 2)
@@ -289,6 +309,7 @@ class MyPlotter:
         sim_lit_data = pd.Series(sim_lit_data)
         # print(sim_lit_data)
         total_param_value = []
+        num_robots = []
         # print(total_param_value)
         # input('>')
         for name in glob.glob(self.file_path + start_time + '*robot*'):
@@ -299,9 +320,19 @@ class MyPlotter:
             # print()
             if len(total_param_value) == 0:
                 total_param_value = param_list[param_column]
+                # if start_time == '150-RW-0pP-2018-11-30--12-24-45':
+                #     print(param_list['litter_collected'])
+                #     input('>')
+                df = param_list['litter_collected'].apply(lambda x: 0 if x == 0 or np.isnan(x) else 1) # if robot has collected litter, make element 1 if not make it zero, then return copy
+                num_robots = df
             else:
+                # if start_time == '150-RW-0pP-2018-11-30--12-24-45':
+                #     print(param_list['litter_collected'])
+                #     input('>')
+                df = param_list['litter_collected'].apply(lambda x: 0 if x == 0 or np.isnan(x) else 1) # if robot has collected litter, make element 1 if not make it zero, then return copy
+                num_robots += df
                 total_param_value += param_list[param_column]
-        return total_param_value
+        return total_param_value,num_robots
 
 
 
