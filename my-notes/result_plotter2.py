@@ -196,11 +196,17 @@ class MyPlotter:
                 if len(d) > 1:
                     exp_id = d[1]
                     exp_id = exp_id.split(':')
-                    if exp_id[1] in self.algorithmList:
-                        self.appendSimTime(exp_id[1],d)
+                    
+                    if len(exp_id) > 1:
+                        if exp_id[1] in self.algorithmList:
+                            self.appendSimTime(exp_id[1],d)
+                        else:
+                            #new algorithm found
+                            self.initAlgorithm(exp_id[1],d)
                     else:
-                        #new algorithm found
-                        self.initAlgorithm(exp_id[1],d)
+                        print('Invalid prefix and ID')
+                        print(d)
+                        print(exp_id)
         
     def processParamData(self):
         ## Call function that will process information for particular logged information from the robot files
@@ -257,13 +263,15 @@ class MyPlotter:
                 # wall_bounces_all = self.algorithmList[i].append_Counts(all_log_desired_data,wall_bounces_all)
                 
                 print('\r{}/{}: {}/{}'.format(progAlg,countAlg,progSim,countSmList),end='')
+                # if(progSim == 3):
+                #     break
             # bounce_data = wall_bounces_all[1:]
             # bounces_mean = ['mean']
             # print(bounce_data)
             # bounces_mean.append(np.nanmean(bounce_data))
             # print(all_num_robots)
             self.num_successful_robots['Mean'].loc[i],self.num_successful_robots['CI95'].loc[i] = \
-            np.nanmean(all_num_robots,axis=0),1.96 * np.nanstd(all_num_robots,axis=0) / np.sqrt(all_num_robots.count(axis=0))
+            np.nanmean(all_num_robots,axis=0),1.96 * np.nanstd(all_num_robots.astype(np.float),axis=0) / np.sqrt(all_num_robots.count(axis=0).astype(np.float))
             # print(self.num_successful_robots['Mean'].loc[i])
             # print(self.num_successful_robots['CI95'].loc[i])
             # input('>')
@@ -273,7 +281,7 @@ class MyPlotter:
                 # print(all_log_desired_data_dict[param].count(axis=0))
                 #compute mean and confidence interval for each desired parameter
                 self.all_desired_data_dict[param]['Mean'].loc[i],self.all_desired_data_dict[param]['CI95'].loc[i] = \
-                np.nanmean(all_log_desired_data_dict[param],axis=0), 1.96*np.nanstd(all_log_desired_data_dict[param],axis=0)/np.sqrt(all_log_desired_data_dict[param].count(axis=0))
+                np.nanmean(all_log_desired_data_dict[param],axis=0), 1.96*np.nanstd(all_log_desired_data_dict[param].astype(np.float),axis=0)/np.sqrt(all_log_desired_data_dict[param].count(axis=0).astype(np.float))
             # bounces_mean, bounces_CI95 = np.nanmean(wall_bounces_all,axis=0), 1.96*np.nanstd(wall_bounces_all,axis=0)/np.sqrt(wall_bounces_all.count(axis=0))
             # bounces_std  = np.nanstd(wall_bounces_all,axis=0)
             # bounces_CI95 = 1.96*bounces_std/np.sqrt(wall_bounces_all.count(axis=0))
