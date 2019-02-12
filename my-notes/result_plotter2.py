@@ -241,13 +241,34 @@ class MyPlotter:
                 # print(sim_data.loc[:,1:].values())
                 # input('>')
                 # # 
-                all_log_desired_data,num_robots = self.get_param_values(start_time,sim_data,self.all_log_desired_data_list)
-                # print(num_robots)
+                log_data,num_robs = self.get_param_values(start_time,sim_data,self.all_log_desired_data_list)
+
+                # print('num_robots',num_robs)
+                # print('\n\n\n')
+                # print('log_data',log_data)
+                
+                # pad with nan if there is difference in lengths
+                num_robots = pd.Series(index=all_num_robots.columns)
+                num_robots[:len(num_robs)] = num_robs
+                all_log_desired_data = log_data
+                # print('all_log_desired_data',all_log_desired_data)
+                # input('>')
+
+                # num_robots = num_robots.append(pd.Series(
+                #                 [np.nan] * (len(all_num_robots.columns) - len(num_robots.values))),
+                #                 ignore_index=True)
+                # all_log_desired_data = all_log_desired_data.append(pd.Series(
+                #                 [np.nan] * (len(all_num_robots.columns) - len(all_log_desired_data.values))),
+                #                 ignore_index=True)
+
                 if len(all_num_robots.columns) == len(num_robots.values):
                     all_num_robots.loc[start_time] = num_robots.values
                     for param in self.all_log_desired_data_list:#update the values to be stored in each dataframe used to save logged data
-                        # print('in',all_log_desired_data[param])
-                        all_log_desired_data_dict[param].loc[start_time] = all_log_desired_data[param].values
+                        # print('all_log_desired_data',all_log_desired_data[param])
+                        # print('all_log_desired_data_dict',all_log_desired_data_dict[param])
+                        # print(all_log_desired_data[param].values)
+                        all_log_desired_data_dict[param].loc[start_time] = list(all_log_desired_data[param].values) + \
+                                            [np.nan] * (len(all_num_robots.columns) - len(all_log_desired_data[param].values))
                         # print('saved',all_log_desired_data_dict[param])
                         # input('>')
                
@@ -279,7 +300,8 @@ class MyPlotter:
                 # print(param)
                 # print(all_log_desired_data_dict[param])
                 # print(all_log_desired_data_dict[param].count(axis=0))
-                #compute mean and confidence interval for each desired parameter
+                # #compute mean and confidence interval for each desired parameter
+                # print('all_log_desired_data_dict',all_log_desired_data_dict[param])
                 self.all_desired_data_dict[param]['Mean'].loc[i],self.all_desired_data_dict[param]['CI95'].loc[i] = \
                 np.nanmean(all_log_desired_data_dict[param],axis=0), 1.96*np.nanstd(all_log_desired_data_dict[param].astype(np.float),axis=0)/np.sqrt(all_log_desired_data_dict[param].count(axis=0).astype(np.float))
             # bounces_mean, bounces_CI95 = np.nanmean(wall_bounces_all,axis=0), 1.96*np.nanstd(wall_bounces_all,axis=0)/np.sqrt(wall_bounces_all.count(axis=0))
@@ -314,7 +336,7 @@ class MyPlotter:
         
         
     def get_param_values(self,start_time,sim_lit_data,param_column):
-        sim_lit_data = pd.Series(sim_lit_data)
+        sim_lit_data = pd.Series(np.floor(sim_lit_data))
         # print(sim_lit_data)
         total_param_value = []
         num_robots = []
@@ -322,15 +344,18 @@ class MyPlotter:
         # input('>')
         for name in glob.glob(self.file_path + start_time + '*robot*'):
             robot_data = self.get_robot_data(name)
+            robot_data = robot_data.round({'time':1})
             param_list = robot_data.loc[robot_data['time'].isin(sim_lit_data)]
-            # print(total_param_value)
-            # print(param_list[param_column])
+            # print('robot_data',robot_data)
+            # print('param_list[{param_column}]',param_list[param_column])
+
             # print()
+            # input('>')
             if len(total_param_value) == 0:
                 total_param_value = param_list[param_column]
                 # if start_time == '150-RW-0pP-2018-11-30--12-24-45':
-                #     print(param_list['litter_collected'])
-                #     input('>')
+                    # print(param_list['litter_collected'])
+                    # input('>')
                 df = param_list['litter_collected'].apply(lambda x: 0 if x == 0 or np.isnan(x) else 1) # if robot has collected litter, make element 1 if not make it zero, then return copy
                 num_robots = df
             else:
