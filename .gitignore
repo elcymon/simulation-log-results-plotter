@@ -1,6 +1,8 @@
 # Blacklist everything
 *
 
+# Whitelist notebooks
+!*.ipynb
 # Whitelist all directories
 !*/
 
