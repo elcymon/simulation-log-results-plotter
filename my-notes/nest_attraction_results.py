@@ -32,6 +32,11 @@ class NA_Results:
         
         mpl.rcParams['pdf.fonttype'] = 42
         mpl.rcParams['ps.fonttype'] = 42
+        
+        #SET COLORS DICTIONARY
+        self.colors_dict = {'robots': 'C0', 'nest': 'C1',
+                       'bound10': 'C2', 'bound13': 'C9',
+                       'bound15': 'C6', 'bound20': 'C3'}
 
         self.osSep = '{}'.format(os.sep)
         self.folderPath = folderPath
@@ -168,8 +173,28 @@ class NA_Results:
             squished_dsts[squished_dsts[col] == d] = \
             dists_df[dists_df[col] == d].mean(axis=0).values
         return squished_dsts
+    def nest_t_x_y_data(self,ID,col,simData):
+        '''
+        Extract all xy positions of robots and nest for specific instance of
+        an algorithm's simulation. Returns a tuple of tx,ty for all robots and nest
+        ideally, col should be t.
+        '''
+#        alltX = pd.DataFrame()
+        # prepend x columns with t
+        txCols = [col] + list(simData.filter(like='_x').columns)
+        alltX = simData[txCols]
+        
+        # prepend y columns with t
+#        alltY = pd.DataFrame()
+        tyCols = [col] + list(simData.filter(like='_y').columns)
+        alltY = simData[tyCols]
+        
+        
+        return alltX,alltY
     
-    def nest_dist_analysis(self,col,IDList,showFig=False):
+    
+            
+    def nest_dist_analysis(self,col='t',IDList=[],showFig=False):
         if len(IDList) == 0:
             IDList = self.uniqueIDs
         
@@ -181,8 +206,18 @@ class NA_Results:
             #remember to change all '.' in ID to 'p'
             IDnestData = self.import_nest_data(ID.replace('.','p'))
             
+            simIndx = 5#np.random.randint(len(IDnestData))#randomly select simulation
+            #get t,x,y information for all robots for the simulation
+            alltX,alltY = self.nest_t_x_y_data(ID,'t',
+                                    IDnestData[simIndx])
+            
+#            self.plot_heatmap(ID,alltX,alltY)
+#            
+#            self.plot_robots_loc(ID,alltX,alltY)
+#            continue
             #get dists columns and t column
             allDistData = self.nest_t_n_dsts(ID.replace('.','p'),col,IDnestData)
+            
             
             #extract data of swarm population per distance range
             nrobots = self.robots_per_range(col,allDistData)
@@ -261,3 +296,114 @@ class NA_Results:
         plt.title(self.folderPath[-1])
         
         
+    def plot_robots_loc(self,ID,alltX,alltY,showFig=False):
+        '''
+        create 10 scatter plots of robot xy locations.
+        '''
+        #get number of rows/timesteps recorded
+        nrows = alltX.shape[0]
+        
+        #time steps to plot : 10 plots from 0 to sim duration
+        steps = np.linspace(0,nrows-1,num=10,endpoint=True,dtype=int)
+        
+        #loop through steps to plot and create scatter plot
+        for step in steps:
+            tx = alltX.iloc[step,:]
+            ty = alltY.iloc[step,:]
+#            print(tx)
+#            print(ty)
+            t = tx[0]
+            nest_x = tx[1]
+            nest_y = ty[1]
+            f = plt.figure()
+            #plot boundaries of world
+            ax = plt.gca()
+            bound10 = plt.Circle((nest_x,nest_y),10,linewidth=2,label='10m',
+                                 color=self.colors_dict['bound10'],fill=False)
+            bound15 = plt.Circle((nest_x,nest_y),15,linewidth=2,label='15m',
+                                 color=self.colors_dict['bound15'],fill=False)
+            bound20 = plt.Circle((nest_x,nest_y),20,linewidth=2,label='20m',
+                                 color=self.colors_dict['bound20'],fill=False)
+            
+            ax.add_patch(bound10)
+            ax.add_patch(bound15)
+            ax.add_patch(bound20)
+            
+            ax.axis('square')
+            
+            #change axis based on experiment type
+            if 'move' in self.folderPath[-1]:
+                ax.axis([-40, 110, -40, 40])
+            else:
+                ax.axis([-40, 40, -40, 40])
+            # ty starts from location 3 because yaw of nest in included.:(
+            plt.plot(tx[2:],ty[3:],'o',color=self.colors_dict['robots'],
+                     label='robots',markerfacecolor=self.colors_dict['robots'])#,markersize=1)
+            plt.plot(nest_x,nest_y,'o',color=self.colors_dict['nest'],
+                     label='nest',markerfacecolor=self.colors_dict['nest'])#,markersize=1)
+            
+#            #restrict to 25 by 25
+#            plt.xlim([-25, 25])
+#            plt.ylim([-25, 25])
+            plt.tick_params(axis='both',which='major',labelsize=18)
+            plt.legend(loc='center left',bbox_to_anchor=(1,0.5),
+                   fontsize=18)
+            figName = self.osSep.join(self.resultFolder\
+                                  + [ID + '_' + str(t) +'.pdf'])
+        
+            f.savefig(figName,bbox_inches='tight')
+            plt.title(ID + '_' + str(t))
+            if not showFig:
+                plt.close()
+                
+    def plot_heatmap(self,ID,alltX,alltY,showFig=False):
+        '''
+        create heatmap of the simulation instance, showing 
+        over the duration of the simulation
+        '''
+        
+        #set plot area boundaries
+        ymin = -40
+        ymax = 40
+        xmin = -40
+        xmax = 40
+        
+        if 'move' in self.folderPath[-1]:
+            xmax = 110
+            
+        y = alltY.iloc[:,3:].to_numpy() #extract values
+        y = list(y.ravel()) # convert to 1d
+        
+        x = alltX.iloc[:,2:].to_numpy() #extract values
+        x = list(x.ravel()) # convert to 1d
+        print(len(x))
+        print(len(y))
+        heatmap, xedges, yedges = \
+        np.histogram2d(x + [xmax,xmax,xmin,xmin],y + [ymax,ymin,ymax,ymin],
+                       bins=(10,10))
+        extent = [xmin, xmax, ymin, ymax]
+        f = plt.figure()
+        plt.clf()
+        ax = plt.gca()
+        plt.tick_params(axis='both',which='major',labelsize=18)
+        plt.xlim([xmin,xmax])
+        plt.ylim([ymin,ymax])
+        
+        im = plt.imshow(heatmap.T, extent=extent, origin='lower',
+                        vmin=0, vmax=1000, interpolation='gaussian',
+                        cmap='gist_heat')
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes('right',size='5%',pad=0.05)
+        cbar = plt.colorbar(im,cax=cax)
+        cbar.ax.tick_params(labelsize=18)
+        
+        figName = self.osSep.join(self.resultFolder\
+                                  + [ID + '_heatmap' +'.pdf'])
+        
+        f.savefig(figName,bbox_inches='tight')
+        plt.title(ID)
+        if not showFig:
+            plt.close()
+        
+        
+            
