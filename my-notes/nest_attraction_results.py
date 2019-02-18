@@ -15,7 +15,7 @@ import pathlib
 import sys
 import pandas as pd
 import os
-
+import seaborn as sns; sns.set()
 
 class NA_Results:
     def __init__(self,folderPath,
@@ -46,7 +46,7 @@ class NA_Results:
         
         #setup distance analalysis
         (self.allIDdists,self.boundRange) = \
-        self.setup_distance_analysis_dict()
+        self.setup_distance_analysis_dict(minBounds,maxBounds)
         
         #create readme files
         self.uniqueIDs = self.create_readme()
@@ -83,13 +83,10 @@ class NA_Results:
         
         return pd.Series(IDList).unique()#extract all unique simulation algorithms
     
-    def setup_distance_analysis_dict(self):
+    def setup_distance_analysis_dict(self,mins,maxs):
         '''
         set up dictionary for storing means and CI95 analysis if distances from nest
         '''
-        mins = self.minBounds
-        maxs = self.maxBounds
-        
         boundRange = []
         for mn,mx in zip(mins,maxs):
             if mx != np.Inf:
@@ -133,21 +130,20 @@ class NA_Results:
         
         return allDistData.sort_values(col,axis=0)
     
-    def robots_per_range(self,col,dists_df):
+    def robots_per_range(self,col,dists_df,mins,maxs,boundRange):
         '''
         This function accepts a dataframe and returns a dataframe
         whose columns represent the number of robots within 
         distance ranges from the nest location
         '''
-        mins = self.minBounds
-        maxs = self.maxBounds
         
-        nrobots = pd.DataFrame(columns=[col] + self.boundRange)
+        
+        nrobots = pd.DataFrame(columns=[col] + boundRange)
         
         #initialize first column to distance travelled by nest
         nrobots[col] = dists_df[col]
         df = dists_df.iloc[:,2:]
-        for mn,mx,rge in zip(mins,maxs,self.boundRange):
+        for mn,mx,rge in zip(mins,maxs,boundRange):
             mnData = df[df > mn]
             mxData = mnData[mnData <= mx]
             nrobots[rge] = mxData.count(axis=1,numeric_only=True)
@@ -193,7 +189,15 @@ class NA_Results:
         return alltX,alltY
     
     
-            
+    def prepare_range_header(self,ID):        
+        NAtD = ID.split('-')[1] #get AtD parameter
+        NAtD = int(NAtD[3:])#get int value
+        minBounds = [0, NAtD, NAtD + 2, NAtD + 4, NAtD + 6] # go in steps of two metres after NAtD
+        maxBounds = minBounds[1:] + [np.Inf]
+        matrixsetup,boundRange = self.setup_distance_analysis_dict(minBounds,maxBounds)
+        
+        return minBounds,maxBounds,boundRange
+        
     def nest_dist_analysis(self,col='t',IDList=[],showFig=False):
         if len(IDList) == 0:
             IDList = self.uniqueIDs
@@ -202,9 +206,13 @@ class NA_Results:
         ci95_df = pd.DataFrame(index=self.boundRange,columns=IDList)
         for i,ID in enumerate(IDList):
             print('\r{}/{}: {}'.format(i+1,len(IDList),ID),end='')
+            if 'NA0-' in ID:
+                col = 't'
+            else:
+                col = 'nest_dst'
             #read simulations for specific algorithm
             #remember to change all '.' in ID to 'p'
-            IDnestData = self.import_nest_data(ID.replace('.','p'))
+            IDnestData = self.import_nest_data(ID)
             
             simIndx = 5#np.random.randint(len(IDnestData))#randomly select simulation
             #get t,x,y information for all robots for the simulation
@@ -216,11 +224,18 @@ class NA_Results:
 #            self.plot_robots_loc(ID,alltX,alltY)
 #            continue
             #get dists columns and t column
-            allDistData = self.nest_t_n_dsts(ID.replace('.','p'),col,IDnestData)
+            allDistData = self.nest_t_n_dsts(ID,col,IDnestData)
             
+            #create minBounds, maxBounds and boundRange for ID
+            #if ID has AtD parameter in name
+            if 'AtD' in ID:
+                minBound,maxBound,boundRange = self.prepare_range_header(ID)
+            else:
+                minBound,maxBound,boundRange = \
+                self.minBounds,self.maxBounds,self.boundRange
             
             #extract data of swarm population per distance range
-            nrobots = self.robots_per_range(col,allDistData)
+            nrobots = self.robots_per_range(col,allDistData,minBound,maxBound,boundRange)
             
             #filter duplicate row values based on 'col' column
             squished_dsts = self.squish_nest_dsts(col,nrobots)
@@ -237,12 +252,13 @@ class NA_Results:
         
         cols = mean_df.columns
         #filter out only noisy and random walk results
-        cols = [i for i in cols if 'N100' in i or 'M1-D1' in i]
+        cols = [i for i in cols if 'N100' in i or 'M1-D1' in i or 'AtD' in i]
         #plot stacked bar plot of average number of robots per range
         #through out all experiments
         self.plot_stacked(mean_df[cols].T,col)
+        sns_heatmap_data = self.prepare_sns_heatmap_data(mean_df)
         
-        return mean_df,ci95_df
+        return mean_df,ci95_df,sns_heatmap_data
         
     def plot_col_vs_rnge(self,ID,col,squished_dsts,showFig=False):
         '''
@@ -250,20 +266,34 @@ class NA_Results:
         as a function of the col i.e. nest_dst or t (time)
         '''
         f = plt.figure()
-        squished_dsts.plot(x=col,ax=f.gca(),figsize=(10,5))
-        if col == 'nest_dst':
-            plt.xlabel('Distance in metres',fontsize=18,fontweight='bold')
-        elif col == 't':
-            plt.xlabel('Time in seconds',fontsize=18,fontweight='bold')
-        else:
-            plt.xlabel(col,fontsize=18)
+        ax = f.add_axes([0.1,0.1,0.5,0.7])
+        ax.set_ylim([0,10])
+        axStack = f.add_axes([0.61,0.1,0.1,0.7])
+        axStack.set_ylim([0,10])
+        cols = [i for i in squished_dsts.columns if 't' not in i]
         
-        plt.ylabel('Number of robots',fontsize=18,fontweight='bold')
+        dataMean = squished_dsts[cols].mean(axis=0)
+        
+        pd.DataFrame(dataMean).T.plot(kind='bar',stacked=True,ax=axStack)
+        
+        squished_dsts.plot(x=col,ax=ax,figsize=(10,5))
+        if col == 'nest_dst':
+            ax.set_xlabel('Distance in metres',fontsize=18,fontweight='bold')
+        elif col == 't':
+            ax.set_xlabel('Time in seconds',fontsize=18,fontweight='bold')
+        else:
+            ax.set_xlabel(col,fontsize=18)
+        
+        ax.set_ylabel('Number of robots',fontsize=18,fontweight='bold')
+        axStack.set_xticks([])
+        axStack.set_yticks([])
+        ax.legend().set_visible(False)
+        
         legend = plt.legend(loc='center left',bbox_to_anchor=(1,0.5),
-                   title='Distance',fontsize=18)#.set_visible=(True)
+                   title='Distance (m)',fontsize=18)#.set_visible=(True)
         
         plt.setp(legend.get_title(),fontsize=18,fontweight='bold')
-        plt.tick_params(axis='both',which='major',labelsize=18)
+        ax.tick_params(axis='both',which='major',labelsize=18)
         figName = self.osSep.join(self.resultFolder\
                                   + [ID + '_' + col +'.pdf'])
         
@@ -294,7 +324,103 @@ class NA_Results:
         f.savefig(figName,bbox_inches='tight')
         
         plt.title(self.folderPath[-1])
+    def prepare_sns_heatmap_data(self,mean_df):
+        '''
+        Plot the annotated heatmap for the mean number of robots
+        based on their distance from the nest. This is different
+        plot type from stacked, because it considers distance
+        range starting from nest to desired point. i.e. 0 - x
         
+        columns are in format: NAx-Ny-Mi-Dj
+        WHERE: x = nest velocity
+               y =  noise value in percentage of modelled noise
+               i = turn probability multiplier
+               j = turn probability divisor
+        The function will return dataframe with columns that correspond
+        to different nest speeds and rows that correspond to different distances
+        from the nest.
+        
+        The content of each cell in the dataframe is itself a dataframe where
+        where columns represent Divisors and rows represent Multipliers.
+        Each cell will be the mean number of robots within each of these ranges,
+        based on the multiplier and divisor.
+        '''
+        #make use of only results that are for Noise of 100% modelled value
+        n100cols = [i for i in mean_df.columns if 'N100' in i]
+        N100_mean_df = mean_df[n100cols]
+        
+        #prepare means into grid of M by D. i.e. M rows and D cols
+        
+        #columns of mean_df represent the different simulation experiments
+        NAs = [i.split('-')[0] for i in N100_mean_df.columns] # extract nest speeds tested
+        
+        NAs = list(set(NAs)) # remove duplicates
+        
+        #prepare dataframe to hold data for different speed and distances
+        #use maxBounds as rows (exclude Inf i.e. last maxbound data)
+        
+        #extract multipliers
+        Ms = [i.split('-')[2] for i in N100_mean_df.columns] # extract multipliers tested
+        
+        Ms = list(set(Ms)) # remove duplicates
+        Ms = [int(i[1:]) for i in Ms]
+        
+        #extract divisors
+        Ds = [i.split('-')[3] for i in N100_mean_df.columns] # extract divisors tested
+        
+        Ds = list(set(Ds)) # remove duplicates
+        Ds = [int(i[1:]) for i in Ds]
+        
+        
+        #CREATE MULTIINDEX DF to store the values
+        #ignore last boundrange index used for mean_df
+        dists = [int(i.split(' - ')[1]) for i in mean_df.index.to_list()[:-1]]
+        col_index = pd.MultiIndex.from_product([NAs,Ds])
+        idx = pd.MultiIndex.from_product([dists,Ms])
+        
+        sns_heatmap_df = pd.DataFrame(index=idx,columns=col_index)
+        
+        #do cumulative some of the different ranges in order to get total robots per range from nest
+        #ignore last index which represents lost robots
+        mean_df_cumsum = mean_df.iloc[:-1,:].cumsum()
+        mean_df_cumsum.index = dists
+        
+        for col in mean_df_cumsum.columns:
+            col_list = col.split('-')
+            NA = col_list[0]
+            M = int(col_list[2][1:])
+            D = int(col_list[3][1:])
+            for ind in mean_df_cumsum.index:
+#                print(mean_df_cumsum.loc[ind,col])
+#                input('>')
+                sns_heatmap_df.loc[(ind,M),(NA,D)] = mean_df_cumsum.loc[ind,col]
+        
+        #plots the heatmap data of frequency of visits
+        grid_kws = {"height_ratios":(0.05,0.9),"hspace":0.3}
+        for na in sns_heatmap_df.columns.levels[0]:
+            for dst in sns_heatmap_df.index.levels[0]:
+                heatData = sns_heatmap_df.loc[dst,na]
+                heatData = heatData[heatData.columns].astype(float)
+                heatData.sort_index(axis=0,inplace=True,ascending=False)
+                heatData.sort_index(axis=1,inplace=True,ascending=True)
+                
+                f, (cbar_ax,ax) = plt.subplots(2,gridspec_kw=grid_kws,figsize=(4,5))
+                ax = sns.heatmap(heatData,linewidths=0.5,vmin=0,
+                    ax=ax,cbar_ax=cbar_ax,cbar_kws={'orientation':'horizontal'},
+                    annot=True,cmap="plasma",vmax=10)
+                
+                ax.set_ylabel('Divisors')
+                ax.set_xlabel('Multipliers')
+                figName = self.osSep.join(self.resultFolder \
+                                          + [na +'-'+ str(dst) + '.pdf'])
+                f.savefig(figName,bbox_inches='tight')
+                plt.close()
+        return sns_heatmap_df
+    
+#        for nest_vel in sns_heatmap_df.columns:
+#            
+        
+        #rows represent different ranges of distances.
         
     def plot_robots_loc(self,ID,alltX,alltY,showFig=False):
         '''
@@ -332,7 +458,7 @@ class NA_Results:
             ax.axis('square')
             
             #change axis based on experiment type
-            if 'move' in self.folderPath[-1]:
+            if 'move' in self.folderPath[-1] or 'NA0-' not in ID:
                 ax.axis([-40, 110, -40, 40])
             else:
                 ax.axis([-40, 40, -40, 40])
