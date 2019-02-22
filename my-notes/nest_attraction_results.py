@@ -15,12 +15,12 @@ import pathlib
 import sys
 import pandas as pd
 import os
-import seaborn as sns; sns.set()
+import seaborn as sns
 
 class NA_Results:
     def __init__(self,folderPath,
-                 minBounds = [0, 10, 13, 15, 20],
-                 maxBounds = [10, 13, 15, 20, np.Inf]):
+                 minBounds = [0, 10, 12, 14, 16],
+                 maxBounds = [10, 12, 14, 16, np.Inf]):
         '''
         The constructor takes in two lists
         
@@ -109,7 +109,7 @@ class NA_Results:
             
         return IDnestData
     
-    def nest_t_n_dsts(self,ID,col,IDnestData):
+    def nest_t_n_dsts(self,ID,col,IDnestData,like='_dst'):
         '''
         Extracts information of distance relationships between nest and mobile robots
         for all simulations for specific algorithm ID
@@ -118,8 +118,9 @@ class NA_Results:
         
         for data in IDnestData:
             #filter dist columns
-            dstCols = data.filter(like='_dst').columns
-            dstCols = ['t'] + list(dstCols)
+            dstCols = data.filter(like=like).columns
+            dstCols = ['t','nest_dst'] + list(dstCols)
+            dstCols = list(set(dstCols))
             dstData = data[dstCols]
 #            print(dstData)
 #            input('>')
@@ -142,7 +143,8 @@ class NA_Results:
         
         #initialize first column to distance travelled by nest
         nrobots[col] = dists_df[col]
-        df = dists_df.iloc[:,2:]
+        #get robots dist data
+        df = dists_df.filter(like='m_4wrobot')#dists_df.iloc[:,2:]
         for mn,mx,rge in zip(mins,maxs,boundRange):
             mnData = df[df > mn]
             mxData = mnData[mnData <= mx]
@@ -183,6 +185,8 @@ class NA_Results:
         # prepend y columns with t
 #        alltY = pd.DataFrame()
         tyCols = [col] + list(simData.filter(like='_y').columns)
+        tyCols.remove('nest_yaw')
+        
         alltY = simData[tyCols]
         
         
@@ -197,13 +201,177 @@ class NA_Results:
         matrixsetup,boundRange = self.setup_distance_analysis_dict(minBounds,maxBounds)
         
         return minBounds,maxBounds,boundRange
+    def noTargetsForaged(self,IDnestData,col,t=1000):
+        ''' 
+        Function to return number of targets foraged after a specific time
+        for all simulation data of specific ID
+        '''
+        noTargetsData = []
+        for data in IDnestData:
+            if t == 'last':
+                d = data['litter_count'].iloc[-1]
+                noTargetsData.append(d)
+            else:
+                #get only column for litcount i.e. foraged targets and when time >= t
+                d = data.loc[data['t'] >= t,'litter_count']
+    #            print(d.iloc[0])
+                noTargetsData.append(d.iloc[0])
+        return noTargetsData
+         
+    def exploration_analysis(self,col='t',IDList=[],showFig=False,t=1000):
+        '''
+        This function performs analysis of amount of targets foraged by the swarm
+        as a means of testing the swarms exploration ability in unbounded world
+        in comparison to bounded world case.
+        '''
+        if len(IDList) == 0:
+            IDList = self.uniqueIDs
+        
+        mean_df = pd.DataFrame()
+        ci95_df = pd.DataFrame()
+        targetPerTime = {'data':[], 'ID': []}
+        IDList.sort()
+        for i,  ID in enumerate(IDList):
+            print('\r{}/{}: {}'.format(i+1,len(IDList),ID),end='')
+            
+            #import nest data
+            IDnestData = self.import_nest_data(ID)
+            
+            #get t vs forage count
+            #reuse the implementation for t n dsts
+            tlitCount = self.nest_t_n_dsts(ID, col,IDnestData.copy(),
+                                           like='litter_count')
+            allDistData = self.nest_t_n_dsts(ID,col,IDnestData)
+            robotsD = allDistData.filter(like='m_4wrobot')
+            #attraction trheshold distance from ID
+            AtD = int(ID.split('-')[1][3:]) + 4
+            dData = robotsD[robotsD <= AtD]
+            nrobots = dData.count(axis=1,numeric_only=True)
+            
+            #squish data
+            tlitCount = tlitCount.round({col:0})
+            tlitCount[AtD] = nrobots
+            squishedData = self.squish_nest_dsts(col,tlitCount)
+            
+            #append to list for plotting later
+            targetPerTime['data'].append(squishedData)
+            targetPerTime['ID'].append(ID)
+            
+            
+            #get number of targets/litter picked after t seconds
+            noTargetsData = self.noTargetsForaged(IDnestData,col,t)
+#            print(noTargetsData)
+            #compute mean and ci95
+            mean_df.loc[t,ID] = np.mean(noTargetsData)
+            ci95_df.loc[t,ID] = np.std(noTargetsData) * \
+                        1.96 / np.sqrt(len(noTargetsData))
+        
+        return mean_df,ci95_df,targetPerTime
+#    def prepare_txy_robots_data(self,IDnestData,ID):
+#        '''
+#        Extract all x and y data for all robots in all simulations of specific ID
+#        '''
+        
+#    def plot_exploration_sns_heatmap(self,ID,IDnestData,edges=(-10,110,-10,110),showFig=False):
+#        '''
+#        plot heatmap of the exploration behaviour as sns heatmap
+#        the exploration is a
+#        '''
+#        xmin,xmax,ymin,ymax = edges
+#        y = alltY.iloc[:,]
+    def plot_targetPerTime(self,targetPerTimeDict,col='t'):
+        '''
+        loops through the list containing targets per time to view how each
+        algorithm performs its foraging activity
+        '''
+        ID_Vel = [float(i.split('-')[0][2:]) for i in targetPerTimeDict['ID']]
+        
+        f,ax1 = plt.subplots()
+        ax1.set_facecolor('#FFFFFF')
+        ax1.grid(False)
+        ax2 = ax1.twinx()
+        ax2.grid(False)
+        
+        for data,ID in zip(targetPerTimeDict['data'],ID_Vel):
+            ax2.plot(data[col],data[16],linestyle=':',linewidth=2)
+        
+        for data,ID in zip(targetPerTimeDict['data'],ID_Vel):
+            ax1.plot(data[col],data['litter_count'],label=ID)
+        
+        
+        ax1.legend(loc='center left',bbox_to_anchor=(1.15,0.5),ncol=1,fontsize=18)
+        ax1.set_ylabel('Number of Targets',fontsize=18)
+        if col == 't':
+            ax1.set_xlabel('Time in seconds',fontsize=18)
+        elif col == 'nest_dst':
+            ax1.set_xlabel('Distance in metres',fontsize=18)
+        else:
+            ax1.set_xlabel(col,fontsize=18)
+        ax2.set_ylabel('Number of Robots',fontsize=18)
+        ax1.tick_params(axis='both',which='major',labelsize=18)
+        ax2.tick_params(axis='both',which='major',labelsize=18)
+        figName = self.osSep.join(self.resultFolder\
+                                  + [col +'-' + 'targets-foraged-per-time.pdf'])
+        f.savefig(figName,bbox_inches='tight')  
+    def plot_exploration_data(self,mean_df,ci95_df,forageType='NA0',t=1000):
+        '''
+        This function plots bar chart showing mean and confidence interval for 
+        different attraction thresholds in comparison to the bounded world case
+        '''
+        if type(t) != 'str':
+            t = str(t)
+            
+        mean_df2,ci95_df2 = mean_df.copy(deep=True),ci95_df.copy(deep=True)
+        cols = mean_df2.columns.to_list()
+        
+        for i,j in enumerate(cols):
+            if 'M1-D1' in j:
+                #bounded world
+                cols[i] = 'Bounded'
+            elif forageType == 'NA0':
+                # get AtD (attraction threshold distance) part then extract number representing attraction threshold
+                j = j.split('-')[1]
+#                print(j)
+                cols[i] = j[3:]
+        
+        #replace columns names
+        mean_df2.columns = cols
+        ci95_df2.columns = cols
+        
+        mean_df2.sort_index(axis=1,inplace=True)
+        ci95_df2.sort_index(axis=1,inplace=True)
+        
+        yerr = []
+        for i in ci95_df2.columns:
+            yerr.append([ci95_df2[i].values,ci95_df2[i].values])
+#        print(yerr)
+#        print(ci95_df2)
+        f = plt.figure()
+        ax= f.gca()
+        ax.set_facecolor('#FFFFFF')
+        plt.rcParams['axes.edgecolor'] = "0.15"
+        plt.rcParams['axes.linewidth'] = 1.25
+        mean_df2.plot(kind='bar',ax=ax,figsize=(4,5),yerr=yerr,rot=0)
+        if 'sweep' not in t:
+            ax.set_xticks([])
+        if 'sweep' in t:
+            ax.set_xlabel('Time in seconds',fontsize=18)
+        ax.tick_params(axis='both',which='major',labelsize=18)
+        ax.set_ylabel('Number of Targets',fontsize=18,fontweight='bold')
+        legend = plt.legend(loc='center left',bbox_to_anchor=(1,0.5),
+                   title='Nest Vel',fontsize=18,ncol=1)
+        plt.setp(legend.get_title(),fontsize=18,fontweight='bold')
+        figName = self.osSep.join(self.resultFolder\
+                                  + [t+'-'+forageType + '-targets-foraged.pdf'])
+        f.savefig(figName,bbox_inches='tight')
         
     def nest_dist_analysis(self,col='t',IDList=[],showFig=False):
         if len(IDList) == 0:
             IDList = self.uniqueIDs
         
-        mean_df = pd.DataFrame(index=self.boundRange,columns=IDList)
-        ci95_df = pd.DataFrame(index=self.boundRange,columns=IDList)
+        mean_df = pd.DataFrame()#index=self.boundRange,columns=IDList)
+        ci95_df = pd.DataFrame()#index=self.boundRange,columns=IDList)
+        
         for i,ID in enumerate(IDList):
             print('\r{}/{}: {}'.format(i+1,len(IDList),ID),end='')
             if 'NA0-' in ID:
@@ -220,12 +388,13 @@ class NA_Results:
                                     IDnestData[simIndx])
             
 #            self.plot_heatmap(ID,alltX,alltY)
+            
 #            
 #            self.plot_robots_loc(ID,alltX,alltY)
-#            continue
+            
             #get dists columns and t column
             allDistData = self.nest_t_n_dsts(ID,col,IDnestData)
-            
+#            return allDistData
             #create minBounds, maxBounds and boundRange for ID
             #if ID has AtD parameter in name
             if 'AtD' in ID:
@@ -239,26 +408,106 @@ class NA_Results:
             
             #filter duplicate row values based on 'col' column
             squished_dsts = self.squish_nest_dsts(col,nrobots)
-            
+#            return nrobots, squished_dsts
             #plot squished_dsts data
-            self.plot_col_vs_rnge(ID,col,squished_dsts,showFig)
+#            self.plot_col_vs_rnge(ID,col,squished_dsts,showFig)
             
             #find mean
-            mean_df[ID] = squished_dsts.mean(axis=0)
+            dfmean = pd.DataFrame()
+            dfmean[ID] = squished_dsts.mean(axis=0)
+            mean_df = pd.concat([mean_df,dfmean],axis=1,sort=False)
             
             #compute 95% confidence interval
-            ci95_df[ID] = squished_dsts.std(axis=0) * \
+            dfci95 = pd.DataFrame()
+            dfci95[ID] = squished_dsts.std(axis=0) * \
                         1.96 / np.sqrt(squished_dsts.shape[0])
+            ci95_df = pd.concat([ci95_df,dfci95],axis=1,sort=False)
         
         cols = mean_df.columns
         #filter out only noisy and random walk results
         cols = [i for i in cols if 'N100' in i or 'M1-D1' in i or 'AtD' in i]
         #plot stacked bar plot of average number of robots per range
         #through out all experiments
-        self.plot_stacked(mean_df[cols].T,col)
-        sns_heatmap_data = self.prepare_sns_heatmap_data(mean_df)
+#        self.plot_stacked(mean_df[cols].T,col)
+        sns_heatmap_data = []#self.prepare_sns_heatmap_data(mean_df)
         
         return mean_df,ci95_df,sns_heatmap_data
+    def threshold_vs_distance(self,col='t',IDList=[],tex=False):
+        '''
+        This creates a latex table of threshold vs distance of robots from tne
+        nest location.
+        '''
+        if len(IDList) == 0:
+            IDList = self.uniqueIDs
+        #distance from nest information.
+        mean_dst = pd.DataFrame(index=self.minBounds[1:],columns=IDList)
+        ci95_dst = pd.DataFrame(index=self.minBounds[1:],columns=IDList)
+        
+        for i,ID in enumerate(IDList):
+            print('\r{}/{}: {}'.format(i+1,len(IDList),ID),end='')
+            if 'NA0-' in ID:
+                col = 't'
+            else:
+                col = 'nest_dst'
+            #read simulations for specific algorithm
+            #remember to change all '.' in ID to 'p'
+            IDnestData = self.import_nest_data(ID)
+            
+            #get dists columns and t column
+            allDistData = self.nest_t_n_dsts(ID,col,IDnestData)
+            
+            nrobots = pd.DataFrame(columns = [col] + list(mean_dst.index))
+            nrobots[col] = allDistData[col] # initialize 'col' column i.e. 't' by default
+            #extract robot distances
+            df = allDistData.filter(like='m_4wrobot')
+            for dst in mean_dst.index:#loop through desired distances
+                dData = df[df<=dst]
+                nrobots[dst] = dData.count(axis=1,numeric_only=True)
+            
+            nrobots.sort_values(col,axis=0,inplace=True)
+#            return nrobots
+            #filter duplicate row values based on 'col' column
+            squished_dsts = self.squish_nest_dsts(col,nrobots)
+#            return squished_dsts
+            squished_dsts.drop(col,inplace=True,axis=1)
+            mean_dst[ID] = squished_dsts.mean(axis=0)
+            ci95_dst[ID] = squished_dsts.std(axis=0) * \
+                        1.96 / np.sqrt(squished_dsts.shape[0])
+        
+        if tex:
+            latexFmt = pd.DataFrame(index=self.minBounds[1:],columns = IDList)
+            for c in mean_dst.columns:
+                for i in mean_dst.index:
+                    latexFmt.loc[i,c] = \
+                    '${:.1f} \pm {:.2f}$'.format(mean_dst.loc[i,c],ci95_dst.loc[i,c])
+            
+            fileName = self.osSep.join(self.resultFolder\
+                                      + [col+'-'+'thresholdVSdist.tex'])
+            
+            #extract only attraction threshold values
+            cols = [int(i.split('-')[1][3:]) for i in latexFmt.columns]
+            latexFmt.columns = cols#replace columns
+            #save as latex
+            latexFmt.sort_index(axis=1).to_latex(fileName,encoding='utf-8',escape=False)
+        return mean_dst,ci95_dst
+        
+        
+    def df_to_tex(self,filename,mean_df,ci95_df=pd.DataFrame()):
+        '''
+        converts a dataframe to latex table.
+        '''
+        latexFmt = pd.DataFrame(index=mean_df.index,columns=mean_df.columns)
+        for c in mean_df.columns:
+            for i in mean_df.index:
+                latexFmt.loc[i,c] = \
+                '${:.1f} \pm {:.2f}$'.format(mean_df.loc[i,c],ci95_df.loc[i,c]) \
+                if not ci95_df.empty else '${}$'.format(mean_df.loc[i,c])
+        #save in result path
+        filename =  self.osSep.join(self.resultFolder\
+                                      + [filename +'.tex'])
+        latexFmt.sort_index(axis=0,inplace=True)
+        latexFmt.sort_index(axis=1,inplace=True)
+        latexFmt.to_latex(filename,encoding='utf-8',escape=False)
         
     def plot_col_vs_rnge(self,ID,col,squished_dsts,showFig=False):
         '''
@@ -324,7 +573,7 @@ class NA_Results:
         f.savefig(figName,bbox_inches='tight')
         
         plt.title(self.folderPath[-1])
-    def prepare_sns_heatmap_data(self,mean_df):
+    def prepare_sns_heatmap_data(self,mean_df_in):
         '''
         Plot the annotated heatmap for the mean number of robots
         based on their distance from the nest. This is different
@@ -345,6 +594,10 @@ class NA_Results:
         Each cell will be the mean number of robots within each of these ranges,
         based on the multiplier and divisor.
         '''
+        sns.set()
+        #filter out rows that contain range of distance from nest
+        mean_df = mean_df_in.filter(like='-',axis=0)
+        
         #make use of only results that are for Noise of 100% modelled value
         n100cols = [i for i in mean_df.columns if 'N100' in i]
         N100_mean_df = mean_df[n100cols]
@@ -374,7 +627,7 @@ class NA_Results:
         
         #CREATE MULTIINDEX DF to store the values
         #ignore last boundrange index used for mean_df
-        dists = [int(i.split(' - ')[1]) for i in mean_df.index.to_list()[:-1]]
+        dists = [int(i.split(' - ')[1]) for i in mean_df.index.to_list()]
         col_index = pd.MultiIndex.from_product([NAs,Ds])
         idx = pd.MultiIndex.from_product([dists,Ms])
         
@@ -382,7 +635,7 @@ class NA_Results:
         
         #do cumulative some of the different ranges in order to get total robots per range from nest
         #ignore last index which represents lost robots
-        mean_df_cumsum = mean_df.iloc[:-1,:].cumsum()
+        mean_df_cumsum = mean_df.cumsum(axis=0)
         mean_df_cumsum.index = dists
         
         for col in mean_df_cumsum.columns:
@@ -409,8 +662,8 @@ class NA_Results:
                     ax=ax,cbar_ax=cbar_ax,cbar_kws={'orientation':'horizontal'},
                     annot=True,cmap="plasma",vmax=10)
                 
-                ax.set_ylabel('Divisors')
-                ax.set_xlabel('Multipliers')
+                ax.set_xlabel('Divisors')
+                ax.set_ylabel('Multipliers')
                 figName = self.osSep.join(self.resultFolder \
                                           + [na +'-'+ str(dst) + '.pdf'])
                 f.savefig(figName,bbox_inches='tight')
@@ -463,7 +716,7 @@ class NA_Results:
             else:
                 ax.axis([-40, 40, -40, 40])
             # ty starts from location 3 because yaw of nest in included.:(
-            plt.plot(tx[2:],ty[3:],'o',color=self.colors_dict['robots'],
+            plt.plot(tx[2:],ty[2:],'o',color=self.colors_dict['robots'],
                      label='robots',markerfacecolor=self.colors_dict['robots'])#,markersize=1)
             plt.plot(nest_x,nest_y,'o',color=self.colors_dict['nest'],
                      label='nest',markerfacecolor=self.colors_dict['nest'])#,markersize=1)
@@ -494,10 +747,10 @@ class NA_Results:
         xmin = -40
         xmax = 40
         
-        if 'move' in self.folderPath[-1]:
+        if ID.split('-')[0] != 'NA0':
             xmax = 110
             
-        y = alltY.iloc[:,3:].to_numpy() #extract values
+        y = alltY.iloc[:,2:].to_numpy() #extract values
         y = list(y.ravel()) # convert to 1d
         
         x = alltX.iloc[:,2:].to_numpy() #extract values
@@ -507,6 +760,7 @@ class NA_Results:
         heatmap, xedges, yedges = \
         np.histogram2d(x + [xmax,xmax,xmin,xmin],y + [ymax,ymin,ymax,ymin],
                        bins=(10,10))
+        
         extent = [xmin, xmax, ymin, ymax]
         f = plt.figure()
         plt.clf()
@@ -531,5 +785,7 @@ class NA_Results:
         if not showFig:
             plt.close()
         
-        
-            
+if __name__ == '__main__':
+    folderPath = ['..','results','2019-02-16-NoBound-NA_Vel_M_D_Test_10']
+#    '2019-02-18-NoBound-NA_att_threshold_vs_robDist']
+    na = NA_Results(folderPath=folderPath)
