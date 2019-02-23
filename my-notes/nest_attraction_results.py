@@ -15,8 +15,7 @@ import pathlib
 import sys
 import pandas as pd
 import os
-import seaborn as sns
-
+import seaborn as sns;
 class NA_Results:
     def __init__(self,folderPath,
                  minBounds = [0, 10, 12, 14, 16],
@@ -29,14 +28,21 @@ class NA_Results:
         maxBounds for list of maximum distance analysis points
         '''
         #set font type so that it does not use font type 3
-        
+        sns.set(context='paper',style = 'ticks',palette='colorblind',font_scale=1.5)
+
         mpl.rcParams['pdf.fonttype'] = 42
         mpl.rcParams['ps.fonttype'] = 42
-        
+        mpl.rc('image',cmap='inferno')
+        self.cm = mpl.cm.inferno
+        self.cm.N=220
+        self.cm.colors = self.cm.colors[0:220]
+        #get six equally spaced colours from cmap so that they will be perceptually 
+        #different if possible.
+#        self.cNum = np.linspace(0,self.cm.N,100,endpoint=True,dtype=np.int)
         #SET COLORS DICTIONARY
-        self.colors_dict = {'robots': 'C0', 'nest': 'C1',
-                       'bound10': 'C2', 'bound13': 'C9',
-                       'bound15': 'C6', 'bound20': 'C3'}
+        self.colors_dict = {'robots': self.cm.colors[70], 'nest': self.cm.colors[0],
+                       'bound10':self.cm.colors[130],
+                       'bound15': self.cm.colors[170], 'bound20': self.cm.colors[219]}
 
         self.osSep = '{}'.format(os.sep)
         self.folderPath = folderPath
@@ -229,7 +235,7 @@ class NA_Results:
         
         mean_df = pd.DataFrame()
         ci95_df = pd.DataFrame()
-        targetPerTime = {'data':[], 'ID': []}
+        targetPerTime = {}
         IDList.sort()
         for i,  ID in enumerate(IDList):
             print('\r{}/{}: {}'.format(i+1,len(IDList),ID),end='')
@@ -254,8 +260,7 @@ class NA_Results:
             squishedData = self.squish_nest_dsts(col,tlitCount)
             
             #append to list for plotting later
-            targetPerTime['data'].append(squishedData)
-            targetPerTime['ID'].append(ID)
+            targetPerTime[ID] = squishedData
             
             
             #get number of targets/litter picked after t seconds
@@ -279,37 +284,55 @@ class NA_Results:
 #        '''
 #        xmin,xmax,ymin,ymax = edges
 #        y = alltY.iloc[:,]
-    def plot_targetPerTime(self,targetPerTimeDict,col='t'):
+    def plot_targetPerTime(self,targetPerTimeDict,col='t',d=16):
         '''
         loops through the list containing targets per time to view how each
         algorithm performs its foraging activity
         '''
-        ID_Vel = [float(i.split('-')[0][2:]) for i in targetPerTimeDict['ID']]
         
         f,ax1 = plt.subplots()
         ax1.set_facecolor('#FFFFFF')
         ax1.grid(False)
-        ax2 = ax1.twinx()
-        ax2.grid(False)
         
-        for data,ID in zip(targetPerTimeDict['data'],ID_Vel):
-            ax2.plot(data[col],data[16],linestyle=':',linewidth=2)
+        if not d:
+            ax2 = ax1.twinx()
+            ax2.grid(False)
         
-        for data,ID in zip(targetPerTimeDict['data'],ID_Vel):
-            ax1.plot(data[col],data['litter_count'],label=ID)
+            for ID in targetPerTimeDict:
+                data = targetPerTimeDict[ID]
+                ax2.plot(data[col],data[d],linestyle=':',linewidth=2,cmap=self.cm)
+            ax2.set_ylabel('Number of Robots',fontsize=18)
+            ax2.tick_params(axis='both',which='major',labelsize=18)
+        colors = [0,100,170,219]#np.linspace(0,self.cm.N,len(targetPerTimeDict),endpoint=False,dtype=np.int)
+        for i,ID in enumerate(targetPerTimeDict):
+            data = targetPerTimeDict[ID]
+            dmci95=''
+            if d==16:
+                dm = np.mean(data[16])
+                ci95 = np.std(data[16]) * 1.96 / np.sqrt(len(data[16]))
+                dmci95 = ' (${:.1f}\pm{:.2f}$)'.format(dm,ci95)
+            if 'NA0-' in ID:
+                IDlabel = ID.split('-')[1][3:]
+            else:
+                IDlabel = ID.split('-')[0][2:]
+            if 'M1-D1' in ID:#IF NO CHEMOTAXIS, BOUNDED WORLD
+                IDlabel = 'Bounded'
+            data.plot(x=col,y='litter_count',label=IDlabel+dmci95,linewidth=3,
+                      color=self.cm(colors[i]),ax=ax1)
+#            ax1.plot(data[col],data['litter_count'],label=IDlabel,c=self.cm)
         
         
-        ax1.legend(loc='center left',bbox_to_anchor=(1.15,0.5),ncol=1,fontsize=18)
-        ax1.set_ylabel('Number of Targets',fontsize=18)
+        legend = ax1.legend(loc='center left',bbox_to_anchor=(1.05,0.5),
+            title='Nest Vel (< 16m robots)',ncol=1,fontsize=18)
+        plt.setp(legend.get_title(),fontsize=18,fontweight='bold')
+        ax1.set_ylabel('Found Targets',fontsize=18,fontweight='bold')
         if col == 't':
-            ax1.set_xlabel('Time in seconds',fontsize=18)
+            ax1.set_xlabel('Time in seconds',fontsize=18,fontweight='bold')
         elif col == 'nest_dst':
-            ax1.set_xlabel('Distance in metres',fontsize=18)
+            ax1.set_xlabel('Distance in metres',fontsize=18,fontweight='bold')
         else:
             ax1.set_xlabel(col,fontsize=18)
-        ax2.set_ylabel('Number of Robots',fontsize=18)
         ax1.tick_params(axis='both',which='major',labelsize=18)
-        ax2.tick_params(axis='both',which='major',labelsize=18)
         figName = self.osSep.join(self.resultFolder\
                                   + [col +'-' + 'targets-foraged-per-time.pdf'])
         f.savefig(figName,bbox_inches='tight')  
@@ -390,7 +413,7 @@ class NA_Results:
 #            self.plot_heatmap(ID,alltX,alltY)
             
 #            
-#            self.plot_robots_loc(ID,alltX,alltY)
+            self.plot_robots_loc(ID,alltX,alltY)
             
             #get dists columns and t column
             allDistData = self.nest_t_n_dsts(ID,col,IDnestData)
@@ -410,7 +433,7 @@ class NA_Results:
             squished_dsts = self.squish_nest_dsts(col,nrobots)
 #            return nrobots, squished_dsts
             #plot squished_dsts data
-#            self.plot_col_vs_rnge(ID,col,squished_dsts,showFig)
+            self.plot_col_vs_rnge(ID,col,squished_dsts,showFig)
             
             #find mean
             dfmean = pd.DataFrame()
@@ -508,7 +531,21 @@ class NA_Results:
         latexFmt.sort_index(axis=0,inplace=True)
         latexFmt.sort_index(axis=1,inplace=True)
         latexFmt.to_latex(filename,encoding='utf-8',escape=False)
+    
+    def mean_ci95_tStep(self,analysis,filename='',t=[100,500,700,1000]):
+        '''
+        loop through time steps to create a mean and ci95 df
+        '''
+        mean_dfs,ci95_dfs = pd.DataFrame(),pd.DataFrame()
         
+        for i in t:
+             m,c,_ = analysis(t=i)   
+             mean_dfs = pd.concat([mean_dfs,m])
+             ci95_dfs = pd.concat([ci95_dfs,c])
+        if len(filename) > 0:
+            self.df_to_tex(filename,mean_dfs,ci95_dfs)
+        return mean_dfs,ci95_dfs
+    
     def plot_col_vs_rnge(self,ID,col,squished_dsts,showFig=False):
         '''
         Function plots number of robots within specific range
@@ -523,9 +560,9 @@ class NA_Results:
         
         dataMean = squished_dsts[cols].mean(axis=0)
         
-        pd.DataFrame(dataMean).T.plot(kind='bar',stacked=True,ax=axStack)
+        pd.DataFrame(dataMean).T.plot(kind='bar',stacked=True,ax=axStack,cmap=self.cm)
         
-        squished_dsts.plot(x=col,ax=ax,figsize=(10,5))
+        squished_dsts.plot(x=col,ax=ax,figsize=(10,5),cmap=self.cm)
         if col == 'nest_dst':
             ax.set_xlabel('Distance in metres',fontsize=18,fontweight='bold')
         elif col == 't':
@@ -594,7 +631,7 @@ class NA_Results:
         Each cell will be the mean number of robots within each of these ranges,
         based on the multiplier and divisor.
         '''
-        sns.set()
+        
         #filter out rows that contain range of distance from nest
         mean_df = mean_df_in.filter(like='-',axis=0)
         
@@ -657,13 +694,13 @@ class NA_Results:
                 heatData.sort_index(axis=0,inplace=True,ascending=False)
                 heatData.sort_index(axis=1,inplace=True,ascending=True)
                 
-                f, (cbar_ax,ax) = plt.subplots(2,gridspec_kw=grid_kws,figsize=(4,5))
+                f, (cbar_ax,ax) = plt.subplots(2,gridspec_kw=grid_kws,figsize=(3,3))
                 ax = sns.heatmap(heatData,linewidths=0.5,vmin=0,
                     ax=ax,cbar_ax=cbar_ax,cbar_kws={'orientation':'horizontal'},
                     annot=True,cmap="plasma",vmax=10)
                 
-                ax.set_xlabel('Divisors')
-                ax.set_ylabel('Multipliers')
+                ax.set_xlabel('Divisors',fontweight='bold')
+                ax.set_ylabel('Multipliers',fontweight='bold')
                 figName = self.osSep.join(self.resultFolder \
                                           + [na +'-'+ str(dst) + '.pdf'])
                 f.savefig(figName,bbox_inches='tight')
