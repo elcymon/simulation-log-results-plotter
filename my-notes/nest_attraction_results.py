@@ -252,7 +252,7 @@ class NA_Results:
 #                                    IDnestData[simIndx])
             
 #            heatmap,xedges,yedges = self.analyse_exploration_heat(ID,IDnestData)#self.exploration_frequency(ID,alltX,alltY,(-20,120),(-20,120),(5,5))
-#            self.exploration_heatmap(heatmap,xedges,yedges)
+#            self.exploration_heatmap(ID,heatmap,xedges,yedges)
             
             #get t vs forage count
             #reuse the implementation for t n dsts
@@ -313,7 +313,7 @@ class NA_Results:
         
         
         
-    def exploration_heatmap(self,heatmap,xedges,yedges):
+    def exploration_heatmap(self,ID,heatmap,xedges,yedges):
         '''
         '''
         heatmap = pd.DataFrame(np.flipud(heatmap),columns=xedges[1:],index=np.flipud(yedges[1:]))
@@ -328,7 +328,9 @@ class NA_Results:
 
 #        ax.set_xticks(xedges*ax.get_xlim()[1]/(2*np.pi))
 #        ax.set_yticks(yedges*ax.get_ylim()[1])
-        
+        figName = self.osSep.join(self.resultFolder\
+                                  + ['-' +ID + '-exploration-expDuration.pdf'])
+        f.savefig(figName,bbox_inches='tight')
         plt.show()
 #        f.savefig(figName[0:-4] + '-no-legend.pdf',bbox_inches = 'tight')
                 
