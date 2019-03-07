@@ -275,7 +275,10 @@ class NA_Results:
             
             
             #get number of targets/litter picked after t seconds
-            noTargetsData = self.noTargetsForaged(IDnestData,col,t)
+            try:
+                noTargetsData = self.noTargetsForaged(IDnestData,col,t)
+            except:
+                continue
 #            print(noTargetsData)
             #compute mean and ci95
             mean_df.loc[t,ID] = np.mean(noTargetsData)
@@ -625,9 +628,12 @@ class NA_Results:
         mean_dfs,ci95_dfs = pd.DataFrame(),pd.DataFrame()
         
         for i in t:
-             m,c,_ = analysis(t=i)   
-             mean_dfs = pd.concat([mean_dfs,m])
-             ci95_dfs = pd.concat([ci95_dfs,c])
+            try:
+                m,c,_ = analysis(t=i)   
+            except:
+                continue
+            mean_dfs = pd.concat([mean_dfs,m])
+            ci95_dfs = pd.concat([ci95_dfs,c])
         if len(filename) > 0:
             self.df_to_tex(filename,mean_dfs,ci95_dfs)
         return mean_dfs,ci95_dfs
