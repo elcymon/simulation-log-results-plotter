@@ -29,7 +29,7 @@ class Turtlebot_Results:
         Get data of nest and robots
         return them as separate variables
         '''
-        filesPath = self.osSep.join(self.folderPath + ['*.txt'])
+        filesPath = self.osSep.join(folderPath + ['*.txt'])
         nestHeader = ['t','ros_t','goal_d','nest_x','nest_y','yaw']
         robotHeader = ['t','ros_t','x','y','yaw','prev_sound','curr_sound','turn_p','action']
         nestLog = pd.DataFrame()
@@ -47,7 +47,7 @@ class Turtlebot_Results:
         
         return nestLog,robotLog
     
-    def plot_dfData(self,robot_nest_distance,colx,coly):
+    def plot_dfData(self,robot_nest_distance,colx,coly,iStr,exp):
         '''
         plot the data in format for publication
         '''
@@ -70,11 +70,11 @@ class Turtlebot_Results:
         
         ax.set_ylim([0, robot_nest_distance[coly].max()*1.2])
         figName = self.osSep.join(self.resultFolder\
-                                  + [self.folderPath[-1] + '_' + coly + '_vs_' + colx +'.pdf'])
+                                  + [exp + '_' + iStr + '_' + coly + '_vs_' + colx +'.pdf'])
         
         f.savefig(figName,bbox_inches='tight')
         
-    def plot_dfRobotDistRange(self,meansDF,stdDF):#robot_dist_distribution):
+    def plot_dfRobotDistRange(self,meansDF,stdDF,exp):#robot_dist_distribution):
         '''
         plot bar figure of robot distance per range of distance traveled by nest
         '''
@@ -94,7 +94,7 @@ class Turtlebot_Results:
         ax.tick_params(axis='both',which='major',labelsize=18)
         legend = plt.legend(loc='upper center',bbox_to_anchor=(0.5,1.2),fontsize=16,ncol=2)
         figName = self.osSep.join(self.resultFolder\
-                                  + [self.folderPath[-1] + '-nest-following-turtlebot.pdf'])
+                                  + [exp + '-nest-following-turtlebot.pdf'])
         f.savefig(figName,bbox_inches='tight')
         
         
@@ -177,7 +177,7 @@ class Turtlebot_Results:
                 
             robot_nest_distanceList.append(robot_nest_distance)
         
-        robot_nest_distanceList[0].plot(x='nest_dst',y='robot_dst',cmap=self.cm)
+#        robot_nest_distanceList[0].plot(x='nest_dst',y='robot_dst',cmap=self.cm)
         return robot_nest_distanceList
     def analyse_experiment(self):
         nestLog,robotLog = self.import_data(self.folderPath)
@@ -187,3 +187,31 @@ class Turtlebot_Results:
         robot_dist_distribution = self.nest_robot_dist_relation(robot_nest_distance)
         
         return robot_dist_distribution
+    def merge_nest_robot_info(self,experiments):
+        '''
+        merges nest and robot logged data in the respective experiments folders
+        '''
+        
+        for i,exp in enumerate(experiments):
+            #print progress
+            print('\r{}/{}: {}'.format(i+1,len(experiments),exp),end='')
+            
+            myPath = self.folderPath + [exp]
+            self.resultFolder = myPath + ['Results']
+            pathlib.Path(self.osSep.join(self.resultFolder)).\
+            mkdir(parents=False,exist_ok=True)#create folder for saving results
+            
+            
+            nestLog,robotLog = self.import_data(myPath)
+#            return nestLog,robotLog
+            nestData,robotList = self.trim_nest_robot_data(nestLog,robotLog)
+            robot_nest_distanceList = self.plot_nest_robot_locs(nestData,robotList)
+            
+            colx = 'nest_dst'
+            coly = 'robot_dst'
+            
+            for i,data in enumerate(robot_nest_distanceList):
+                iStr = '{}'.format(i)
+                resultName = self.osSep.join(self.resultFolder + [exp + '-' + iStr + '-result-df.csv'])
+                self.plot_dfData(data,colx,coly,iStr,exp)
+                data.to_csv(resultName)
