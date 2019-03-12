@@ -215,3 +215,46 @@ class Turtlebot_Results:
                 resultName = self.osSep.join(self.resultFolder + [exp + '-' + iStr + '-result-df.csv'])
                 self.plot_dfData(data,colx,coly,iStr,exp)
                 data.to_csv(resultName)
+    def import_nest_robot_info(self,experiments):
+        '''
+        reads csv data of merged robot nest info and creates a new df from it
+        that calls nest_robot_relation function
+        '''
+        nest_robot_relation = [] #initally set to empty list
+        for exp in experiments:
+            #path to csv formatted result
+            csvFilePath = self.osSep.join(self.folderPath + \
+                                      [exp,'Results',exp + '*' + 'result-df.csv'])
+            for csvFile in glob(csvFilePath):
+                nest_robot_df = pd.read_csv(csvFile,sep=':|,',engine='python')
+                robot_dist_distribution = self.nest_robot_dist_relation([nest_robot_df])
+                if len(nest_robot_relation) == 0:
+                    nest_robot_relation = robot_dist_distribution
+                else:
+                    nest_robot_relation = pd.concat([nest_robot_relation,\
+                                                     robot_dist_distribution],
+                            ignore_index=True)
+        return nest_robot_relation
+    def rw_chemotaxis_df_plot(self,rw=[],chemotaxis=[]):
+        '''
+        create a df for random walk and chemotaxis then plot a bar graph
+        of the two approaches combined
+        '''
+        meanDF = pd.DataFrame(columns=['Random Walk','Chemotaxis'])
+        stdDF = pd.DataFrame(columns=['Random Walk','Chemotaxis'])
+        
+        if len(chemotaxis) > 0:
+            chemotaxisDF = self.import_nest_robot_info(chemotaxis)
+            meanDF['Chemotaxis'] = chemotaxisDF.mean()
+            stdDF['Chemotaxis'] = chemotaxisDF.std()
+            
+        if len(rw) > 0:
+            rwDF = self.import_nest_robot_info(rw)
+            meanDF['Random Walk'] = rwDF.mean()
+            stdDF['Random Walk'] = rwDF.std()
+        
+        exp = self.folderPath[-1]
+        return chemotaxisDF
+        self.plot_dfRobotDistRange(meanDF,stdDF,exp)
+        
+            
