@@ -818,7 +818,7 @@ class NA_Results:
         
         #rows represent different ranges of distances.
         
-    def plot_robots_loc(self,ID,alltX,alltY,showFig=False):
+    def plot_robots_loc(self,ID,alltX,alltY,showFig=False,lims=[]):
         '''
         create 10 scatter plots of robot xy locations.
         '''
@@ -858,11 +858,24 @@ class NA_Results:
                 ax.axis([-40, 110, -40, 40])
             else:
                 ax.axis([-40, 40, -40, 40])
+            
+            if len(lims) > 0:
+                ax.axis(lims)
+            #plot path taken by nest robot
+            hist = 130#history of nest locations to include
+            if step < hist:
+                plt.plot(alltX.iloc[0:step,1],alltY.iloc[0:step,1],
+                     linestyle=':',color=self.colors_dict['nest'],label='nest path')
+            else:
+                plt.plot(alltX.iloc[step-hist:step,1],alltY.iloc[step-hist:step,1],
+                     linestyle=':',color=self.colors_dict['nest'],label='nest path')
+            
             # ty starts from location 3 because yaw of nest in included.:(
             plt.plot(tx[2:],ty[2:],marker='o',linestyle='',color=self.colors_dict['robots'],
                      label='robots',markerfacecolor=self.colors_dict['robots'])#,markersize=1)
-            plt.plot(nest_x,nest_y,marker='X',linestyle='',color=self.colors_dict['nest'],
+            plt.plot(nest_x,nest_y,marker='X',markersize=10,linestyle='',color=self.colors_dict['nest'],
                      label='nest',markerfacecolor=self.colors_dict['nest'])#,markersize=1)
+            
             
 #            #restrict to 25 by 25
 #            plt.xlim([-25, 25])
