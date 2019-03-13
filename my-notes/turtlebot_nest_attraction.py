@@ -224,7 +224,7 @@ class Turtlebot_Results:
         for exp in experiments:
             #path to csv formatted result
             csvFilePath = self.osSep.join(self.folderPath + \
-                                      [exp,'Results',exp + '*' + 'result-df.csv'])
+                                      [exp,'Results','*' + 'result-df.csv'])
             for csvFile in glob(csvFilePath):
                 nest_robot_df = pd.read_csv(csvFile,sep=':|,',engine='python')
                 robot_dist_distribution = self.nest_robot_dist_relation([nest_robot_df])
@@ -242,19 +242,41 @@ class Turtlebot_Results:
         '''
         meanDF = pd.DataFrame(columns=['Random Walk','Chemotaxis'])
         stdDF = pd.DataFrame(columns=['Random Walk','Chemotaxis'])
+        ci95DF = pd.DataFrame(columns=['Random Walk','Chemotaxis'])
         
         if len(chemotaxis) > 0:
             chemotaxisDF = self.import_nest_robot_info(chemotaxis)
             meanDF['Chemotaxis'] = chemotaxisDF.mean()
             stdDF['Chemotaxis'] = chemotaxisDF.std()
+            ci95DF['Chemotaxis'] = chemotaxisDF.std() * 1.96 / chemotaxisDF.count().pow(0.5)
             
         if len(rw) > 0:
             rwDF = self.import_nest_robot_info(rw)
             meanDF['Random Walk'] = rwDF.mean()
             stdDF['Random Walk'] = rwDF.std()
+            ci95DF['Random Walk'] = rwDF.std() * 1.96 / rwDF.count().pow(0.5)
         
         exp = self.folderPath[-1]
-        return chemotaxisDF
+#        return chemotaxisDF
         self.plot_dfRobotDistRange(meanDF,stdDF,exp)
+        self.plot_dfRobotDistRange(meanDF,ci95DF,exp+'ci95')
         
-            
+        self.df_to_tex('mean-std-ci95',meanDF,ci95DF,stdDF)
+        
+    def df_to_tex(self,filename,mean_df,ci95_df=pd.DataFrame(),std_df=pd.DataFrame()):
+        '''
+        converts a dataframe to latex table.
+        '''
+        latexFmt = pd.DataFrame(index=mean_df.index,columns=mean_df.columns)
+        for c in mean_df.columns:
+            for i in mean_df.index:
+                latexFmt.loc[i,c] = \
+                '${:.1f} \pm {:.2f},{:.2f}$'.format(mean_df.loc[i,c], \
+                  std_df.loc[i,c],ci95_df.loc[i,c]) \
+                if not ci95_df.empty else '${}$'.format(mean_df.loc[i,c])
+        #save in result path
+        filename =  self.osSep.join(self.resultFolder\
+                                      + [filename +'.tex'])
+        latexFmt.sort_index(axis=0,inplace=True)
+        latexFmt.sort_index(axis=1,inplace=True)
+        latexFmt.to_latex(filename,encoding='utf-8',escape=False)
