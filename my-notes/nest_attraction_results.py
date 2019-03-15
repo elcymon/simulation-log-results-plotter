@@ -43,7 +43,7 @@ class NA_Results:
 #        self.cNum = np.linspace(0,self.cm.N,100,endpoint=True,dtype=np.int)
         #SET COLORS DICTIONARY
         self.colors_dict = {'robots': self.cm(70), 'nest': self.cm(0),
-                       'bound10':self.cm(130),
+                       'litter':self.cm(200),'bound10':self.cm(130),
                        'bound15': self.cm(170), 'bound20': self.cm(219)}
 
         self.osSep = '{}'.format(os.sep)
@@ -250,12 +250,14 @@ class NA_Results:
             IDnestData = self.import_nest_data(ID)
             
 #            
-#            simIndx = 5#np.random.randint(len(IDnestData))#randomly select simulation
-#            #get t,x,y information for all robots for the simulation
-#            alltX,alltY = self.nest_t_x_y_data(ID,'t',
-#                                    IDnestData[simIndx])
-#            self.plot_robots_loc(ID,alltX,alltY,showFig=False,lims=[0,100,0,100],
-#                        bounds=[16],boundstyle='-.')
+            simIndx = 0#np.random.randint(len(IDnestData))#randomly select simulation
+            #get t,x,y information for all robots for the simulation
+            alltX,alltY = self.nest_t_x_y_data(ID,'t',
+                                    IDnestData[simIndx])
+            return alltX,alltY
+            self.plot_robots_loc(ID,alltX,alltY,showFig=False,lims=[0,100,0,100],
+                        bounds=[16],boundstyle='-.')
+            
 #            heatmap,xedges,yedges = self.analyse_exploration_heat(ID,IDnestData)#self.exploration_frequency(ID,alltX,alltY,(-20,120),(-20,120),(5,5))
 #            self.exploration_heatmap(ID,heatmap,xedges,yedges)
             
@@ -900,20 +902,20 @@ class NA_Results:
             ty = alltY.iloc[step,:]
 #            print(tx)
 #            print(ty)
-            t = tx[0]
-            nest_x = tx[1]
-            nest_y = ty[1]
+            t = tx.filter(regex='^t$')
+            nest_x = tx.filter(regex='nest_x').iloc[0]
+            nest_y = ty.filter(regex='nest_y').iloc[0]
             f = plt.figure()
             #plot boundaries of world
             ax = plt.gca()
             if len(bounds) == 3:
-                bound10 = plt.Circle((nest_x,nest_y),bounds[0],linewidth=3,
+                bound10 = plt.Circle((nest_x.iloc[0],nest_y.iloc[0]),bounds[0],linewidth=3,
                                      label='${}m$'.format(bounds[0]),linestyle='-',
                                      color=self.colors_dict['bound10'],fill=False)
-                bound15 = plt.Circle((nest_x,nest_y),bounds[1],linewidth=3,
+                bound15 = plt.Circle((nest_x.iloc[0],nest_y.iloc[0]),bounds[1],linewidth=3,
                                      label='${}m$'.format(bounds[1]),linestyle='-.',
                                      color=self.colors_dict['bound15'],fill=False)
-                bound20 = plt.Circle((nest_x,nest_y),bounds[2],linewidth=3,
+                bound20 = plt.Circle((nest_x.iloc[0],nest_y).iloc[0],bounds[2],linewidth=3,
                                      label='${}m$'.format(bounds[2]),linestyle=':',
                                      color=self.colors_dict['bound20'],fill=False)
                 
@@ -947,11 +949,12 @@ class NA_Results:
                      linestyle=':',color=self.colors_dict['nest'],label='nest path')
             
             # ty starts from location 3 because yaw of nest in included.:(
-            plt.plot(tx[2:],ty[2:],marker='o',linestyle='',color=self.colors_dict['robots'],
-                     label='robots',markerfacecolor=self.colors_dict['robots'])#,markersize=1)
-            plt.plot(nest_x,nest_y,marker='X',markersize=10,linestyle='',color=self.colors_dict['nest'],
+            plt.plot(tx.filter(regex='litter*'),ty.filter(regex='litter*'),marker='*',linestyle='',
+                     label='litter',color=self.colors_dict['litter'],markersize=7)
+            plt.plot(tx.filter(regex='m_4wrobot*'),ty.filter(regex='m_4wrobot*'),marker='o',linestyle='',color=self.colors_dict['robots'],
+                     label='robots',markerfacecolor=self.colors_dict['robots'],markersize=7)
+            plt.plot(nest_x,nest_y,marker='X',markersize=15,linestyle='',color=self.colors_dict['nest'],
                      label='nest',markerfacecolor=self.colors_dict['nest'])#,markersize=1)
-            
             
 #            #restrict to 25 by 25
 #            plt.xlim([-25, 25])
@@ -960,17 +963,20 @@ class NA_Results:
             plt.legend(loc='center left',bbox_to_anchor=(1,0.5),
                    fontsize=18)
             figName = self.osSep.join(self.resultFolder\
-                                  + [ID + '_' + str(t) +'.pdf'])
+                                  + [ID + '_' + str(t.iloc[0]) +'.pdf'])
         
-            f.savefig(figName,bbox_inches='tight')
             
-            #no legend version
-            plt.legend().set_visible(False)
-            f.savefig(figName[0:-4] + '-no-legend.pdf',bbox_inches='tight')
-            
-            plt.title(ID + '_' + str(t))
             if not showFig:
+                f.savefig(figName,bbox_inches='tight')
+                #no legend version
+                plt.legend().set_visible(False)
+                f.savefig(figName[0:-4] + '-no-legend.pdf',bbox_inches='tight')
                 plt.close()
+                
+            
+            if showFig:
+                plt.title(ID + '_' + str(t.iloc[0]))
+            
     
     
     def plot_heatmap(self,ID,alltX,alltY,showFig=False):
