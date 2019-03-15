@@ -254,9 +254,13 @@ class NA_Results:
             #get t,x,y information for all robots for the simulation
             alltX,alltY = self.nest_t_x_y_data(ID,'t',
                                     IDnestData[simIndx])
-            return alltX,alltY
-            self.plot_robots_loc(ID,alltX,alltY,showFig=False,lims=[0,100,0,100],
-                        bounds=[16],boundstyle='-.')
+            self.plot_robots_loc(ID,alltX,alltY,showFig=False,
+                             lims=[-15,15,-15,15],bounds=[14],
+                             boundstyle='-.',nest_path=False,boundtype='circle')
+            continue
+#            return alltX,alltY
+#            self.plot_robots_loc(ID,alltX,alltY,showFig=False,lims=[0,100,0,100],
+#                        bounds=[16],boundstyle='-.')
             
 #            heatmap,xedges,yedges = self.analyse_exploration_heat(ID,IDnestData)#self.exploration_frequency(ID,alltX,alltY,(-20,120),(-20,120),(5,5))
 #            self.exploration_heatmap(ID,heatmap,xedges,yedges)
@@ -886,7 +890,7 @@ class NA_Results:
         #rows represent different ranges of distances.
         
     def plot_robots_loc(self,ID,alltX,alltY,showFig=False,lims=[],
-                        bounds=[10,15,20],boundstyle='-.'):
+                        bounds=[10,15,20],boundtype=None,boundstyle='-.',nest_path=True):
         '''
         create 10 scatter plots of robot xy locations.
         '''
@@ -908,7 +912,7 @@ class NA_Results:
             f = plt.figure()
             #plot boundaries of world
             ax = plt.gca()
-            if len(bounds) == 3:
+            if len(bounds) == 3 and boundtype == 'circle':
                 bound10 = plt.Circle((nest_x.iloc[0],nest_y.iloc[0]),bounds[0],linewidth=3,
                                      label='${}m$'.format(bounds[0]),linestyle='-',
                                      color=self.colors_dict['bound10'],fill=False)
@@ -922,12 +926,17 @@ class NA_Results:
                 ax.add_patch(bound10)
                 ax.add_patch(bound15)
                 ax.add_patch(bound20)
-            elif len(bounds) == 1:
+            elif len(bounds) == 1  and boundtype == 'circle':
                 bound15 = plt.Circle((nest_x,nest_y),bounds[0],linewidth=3,label='${}m$'.format(bounds[0]),
                                      linestyle=boundstyle,
                                      color=self.colors_dict['bound15'],fill=False)
                 ax.add_patch(bound15)
+            elif boundtype == 'square':
+                xy1,xy2,width,height = bounds
+                rectWall = plt.Rectangle((xy1,xy2), width, height,fill=False,color='k',linewidth=3,
+                              label='${}m$'.format(width),linestyle='-')
                 
+                ax.add_patch(rectWall)
             
             ax.axis('square')
             
@@ -941,12 +950,13 @@ class NA_Results:
                 ax.axis(lims)
             #plot path taken by nest robot
             hist = 130#history of nest locations to include
-            if step < hist:
-                plt.plot(alltX.iloc[0:step,1],alltY.iloc[0:step,1],
-                     linestyle=':',color=self.colors_dict['nest'],label='nest path')
-            else:
-                plt.plot(alltX.iloc[step-hist:step,1],alltY.iloc[step-hist:step,1],
-                     linestyle=':',color=self.colors_dict['nest'],label='nest path')
+            if nest_path:
+                if step < hist:
+                    plt.plot(alltX.iloc[0:step,1],alltY.iloc[0:step,1],
+                         linestyle=':',color=self.colors_dict['nest'],label='nest path')
+                else:
+                    plt.plot(alltX.iloc[step-hist:step,1],alltY.iloc[step-hist:step,1],
+                         linestyle=':',color=self.colors_dict['nest'],label='nest path')
             
             # ty starts from location 3 because yaw of nest in included.:(
             plt.plot(tx.filter(regex='litter*'),ty.filter(regex='litter*'),marker='*',linestyle='',
