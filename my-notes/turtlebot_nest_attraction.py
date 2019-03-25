@@ -88,13 +88,17 @@ class Turtlebot_Results:
         
         f = plt.figure()
         ax = f.gca()
-        meansDF.plot(kind='bar',cmap='plasma',ax=ax,yerr=yerr,rot=0)#cmap=self.cm,
+        meansDF.plot(kind='bar',cmap='plasma',ax=ax,yerr=yerr,rot=0,width=0.8)#cmap=self.cm,
         ax.set_ylabel('Distance in metres',fontsize=18,fontweight='bold')
-        ax.set_xlabel('Nest travel distance in metres',fontsize=18,fontweight='bold')
         ax.tick_params(axis='both',which='major',labelsize=18)
         legend = plt.legend(loc='upper center',bbox_to_anchor=(0.5,1.2),fontsize=16,ncol=2)
         figName = self.osSep.join(self.resultFolder\
                                   + [exp + '-nest-following-turtlebot.pdf'])
+        if 'stationary' in figName:
+            ax.set_xlabel('Time in seconds',fontsize=18,fontweight='bold')
+        else:
+            ax.set_xlabel('Nest travel distance in metres',fontsize=18,fontweight='bold')
+        
         f.savefig(figName,bbox_inches='tight')
         
         
@@ -133,18 +137,42 @@ class Turtlebot_Results:
         robot_nest_distance is a list of DF, where nest travel distance has been mapped to
         robot's distance from the nest's location.
         '''
-        distCols =  {'0 - 2':[], '2 - 4':[],'4 - 6':[], '6 - 8':[], '8 - 10':[]}
+        if np.round(robot_nest_distance[0]['nest_dst'].max(),decimals = 0) == 0:
+            #use time and round to nearest 100
+            
+            #get experiment duration
+            dt = robot_nest_distance[0]['t'].iloc[-1]- robot_nest_distance[0]['t'].iloc[0]
+            
+            #round to nearest 100
+            dt = int(np.ceil(dt/100.0)) * 100
+            maxs = np.arange(100,dt+1,100,dtype=np.int)
+            mins = np.arange(0,dt,100,dtype=np.int)
+            distCols = {}
+            for mn,mx in zip(mins,maxs):
+#                rnge = '{} - {}'.format(mn,mx)
+                distCols[mx] = []
+            col = 't'
+        else:
+            mins = np.arange(0,10,1,dtype=np.int)#[0,2,4,6,8]
+            maxs = np.arange(1,11,1,dtype=np.int)#[2,4,6,8,10]
+            distCols = {}
+            for mn,mx in zip(mins,maxs):
+                distCols[mx] = []
+            col = 'nest_dst'
+            #distCols =  {2:[], 4:[],6:[], 8:[],10:[]}
+            
         robot_dist_distribution = pd.DataFrame(columns = list(distCols.keys()))
         for rn in robot_nest_distance:
+            rn['t'] = rn['t'] - rn['t'].iloc[0]
     #        rn = robot_nest_distance
-            for drange in distCols:
-                dList = [int(i) for i in drange.split(' - ')]#split into [min,max]
+            for mn,mx in zip(mins,maxs):
+#                dList = [int(i) for i in drange.split(' - ')]#split into [min,max]
                 #extract rows where nest distance travelled is within dList range
-                distValues = rn.loc[(rn['nest_dst'] >= dList[0]) & (rn['nest_dst'] <= dList[1]),:]
+                distValues = rn.loc[(rn[col] >= mn) & (rn[col] <= mx),:]
                 
-                distCols[drange] = distCols[drange] + list(distValues['robot_dst'])
+                distCols[mx] = distCols[mx] + list(distValues['robot_dst'])
         for drange in distCols:
-            robot_dist_distribution[drange] = pd.Series(distCols[drange])
+            robot_dist_distribution[drange] = pd.Series(np.nanmean(distCols[drange]))
         return robot_dist_distribution
     
     def plot_nest_robot_locs(self,nestData,robotList):
@@ -248,16 +276,16 @@ class Turtlebot_Results:
             chemotaxisDF = self.import_nest_robot_info(chemotaxis)
             meanDF['Chemotaxis'] = chemotaxisDF.mean()
             stdDF['Chemotaxis'] = chemotaxisDF.std()
-            ci95DF['Chemotaxis'] = chemotaxisDF.std() * 1.96 / chemotaxisDF.count().pow(0.5)
+            ci95DF['Chemotaxis'] = chemotaxisDF.std() * 1.96 / np.sqrt(chemotaxisDF.count())
             
         if len(rw) > 0:
             rwDF = self.import_nest_robot_info(rw)
             meanDF['Random Walk'] = rwDF.mean()
             stdDF['Random Walk'] = rwDF.std()
-            ci95DF['Random Walk'] = rwDF.std() * 1.96 / rwDF.count().pow(0.5)
+            ci95DF['Random Walk'] = rwDF.std() * 1.96 / np.sqrt(rwDF.count())
         
         exp = self.folderPath[-1]
-#        return chemotaxisDF
+        #return chemotaxisDF
         self.plot_dfRobotDistRange(meanDF,stdDF,exp)
         self.plot_dfRobotDistRange(meanDF,ci95DF,exp+'ci95')
         
