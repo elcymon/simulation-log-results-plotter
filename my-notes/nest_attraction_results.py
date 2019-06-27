@@ -723,7 +723,7 @@ class NA_Results:
         steps = np.linspace(0,nrows-1,num=10,endpoint=True,dtype=int)
         
         #loop through steps to plot and create scatter plot
-        for step in steps:
+        for step in range(nrows):
             tx = alltX.iloc[step,:]
             ty = alltY.iloc[step,:]
 #            print(tx)
@@ -764,8 +764,10 @@ class NA_Results:
             plt.tick_params(axis='both',which='major',labelsize=18)
             plt.legend(loc='center left',bbox_to_anchor=(1,0.5),
                    fontsize=18)
-            figName = self.osSep.join(self.resultFolder\
-                                  + [ID + '_' + str(t) +'.pdf'])
+            figFolder = self.osSep.join(self.resultFolder + [ID])
+            pathlib.Path(figFolder).mkdir(parents=False,exist_ok=True)#make directory to store images
+            
+            figName = self.osSep.join([figFolder,ID + '_' + str(t) +'.jpg'])
         
             f.savefig(figName,bbox_inches='tight')
             plt.title(ID + '_' + str(t))
