@@ -16,6 +16,7 @@ import sys
 import pandas as pd
 import os
 import seaborn as sns;
+from copy import deepcopy
 class NA_Results:
     def __init__(self,folderPath,
                  minBounds = [0, 10, 12, 14, 16],
@@ -33,16 +34,17 @@ class NA_Results:
         mpl.rcParams['pdf.fonttype'] = 42
         mpl.rcParams['ps.fonttype'] = 42
         mpl.rc('image',cmap='inferno')
-        self.cm = mpl.cm.inferno
-        self.cm.N=220
-        self.cm.colors = self.cm.colors[0:220]
+        cm1 = deepcopy(mpl.cm.inferno)
+        cm1.N=220
+        cm1.colors = cm1.colors[0:220]
+        self.cm = mpl.colors.LinearSegmentedColormap.from_list('my_inferno',cm1.colors,N=cm1.N)
         #get six equally spaced colours from cmap so that they will be perceptually 
         #different if possible.
 #        self.cNum = np.linspace(0,self.cm.N,100,endpoint=True,dtype=np.int)
         #SET COLORS DICTIONARY
-        self.colors_dict = {'robots': self.cm.colors[70], 'nest': self.cm.colors[0],
-                       'bound10':self.cm.colors[130],
-                       'bound15': self.cm.colors[170], 'bound20': self.cm.colors[219]}
+        self.colors_dict = {'robots': self.cm(70), 'nest': self.cm(0),
+                       'litter':self.cm(200),'bound10':self.cm(130),
+                       'bound15': self.cm(170), 'bound20': self.cm(219)}
 
         self.osSep = '{}'.format(os.sep)
         self.folderPath = folderPath
@@ -224,7 +226,7 @@ class NA_Results:
                 noTargetsData.append(d.iloc[0])
         return noTargetsData
          
-    def exploration_analysis(self,col='t',IDList=[],showFig=False,t=1000):
+    def exploration_analysis(self,col='t',IDList=[],showFig=False,t=1000,d=None):
         '''
         This function performs analysis of amount of targets foraged by the swarm
         as a means of testing the swarms exploration ability in unbounded world
@@ -235,13 +237,33 @@ class NA_Results:
         
         mean_df = pd.DataFrame()
         ci95_df = pd.DataFrame()
+        mean_robsDF = pd.DataFrame()
+        ci95_robsDF = pd.DataFrame()
+        
         targetPerTime = {}
         IDList.sort()
+        
         for i,  ID in enumerate(IDList):
             print('\r{}/{}: {}'.format(i+1,len(IDList),ID),end='')
             
             #import nest data
             IDnestData = self.import_nest_data(ID)
+            
+#            
+            simIndx = 0#np.random.randint(len(IDnestData))#randomly select simulation
+            #get t,x,y information for all robots for the simulation
+            alltX,alltY = self.nest_t_x_y_data(ID,'t',
+                                    IDnestData[simIndx])
+            self.plot_robots_loc(ID,alltX,alltY,showFig=False,
+                             lims=[-15,15,-15,15],bounds=[14],
+                             boundstyle='-.',nest_path=False,boundtype='circle')
+            continue
+#            return alltX,alltY
+#            self.plot_robots_loc(ID,alltX,alltY,showFig=False,lims=[0,100,0,100],
+#                        bounds=[16],boundstyle='-.')
+            
+#            heatmap,xedges,yedges = self.analyse_exploration_heat(ID,IDnestData)#self.exploration_frequency(ID,alltX,alltY,(-20,120),(-20,120),(5,5))
+#            self.exploration_heatmap(ID,heatmap,xedges,yedges)
             
             #get t vs forage count
             #reuse the implementation for t n dsts
@@ -250,7 +272,10 @@ class NA_Results:
             allDistData = self.nest_t_n_dsts(ID,col,IDnestData)
             robotsD = allDistData.filter(like='m_4wrobot')
             #attraction trheshold distance from ID
-            AtD = int(ID.split('-')[1][3:]) + 4
+            if d== None:
+                AtD = int(ID.split('-')[1][3:]) + 4
+            else:
+                AtD = d
             dData = robotsD[robotsD <= AtD]
             nrobots = dData.count(axis=1,numeric_only=True)
             
@@ -262,16 +287,100 @@ class NA_Results:
             #append to list for plotting later
             targetPerTime[ID] = squishedData
             
-            
+            #robots till time t
+            if t == 'last':
+                nrobotsT = squishedData[AtD] 
+            else:
+                nrobotsT = squishedData.loc[squishedData['t'] <= t, AtD]
+#            return nrobotsT,squishedData
+            mean_robsDF.loc[t,ID] = np.mean(nrobotsT)
+            ci95_robsDF.loc[t,ID] = np.std(nrobotsT) * 1.96 / np.sqrt(len(nrobotsT))
             #get number of targets/litter picked after t seconds
-            noTargetsData = self.noTargetsForaged(IDnestData,col,t)
+            try:
+                noTargetsData = self.noTargetsForaged(IDnestData,col,t)
+            except:
+                continue
 #            print(noTargetsData)
             #compute mean and ci95
             mean_df.loc[t,ID] = np.mean(noTargetsData)
             ci95_df.loc[t,ID] = np.std(noTargetsData) * \
                         1.96 / np.sqrt(len(noTargetsData))
         
-        return mean_df,ci95_df,targetPerTime
+        return mean_df,ci95_df,mean_robsDF,ci95_robsDF,targetPerTime
+    def analyse_exploration_heat(self,ID,IDnestData):
+        '''
+        goes through all the simulations of a specific ID and creates a sns heatmap
+        plot that represents the mean frequencies of visiting particular rangs in 
+        the world.
+        '''
+        
+        xedges = np.nan
+        yedges = np.nan
+        heatmap = np.array([])
+        
+        for i in range(len(IDnestData)):
+        #get t,x,y information for all robots for the simulation
+            alltX,alltY = self.nest_t_x_y_data(ID,'t',
+                                IDnestData[i])
+            
+            h,xedge,yedge = self.exploration_frequency(ID,alltX,alltY,(-20,120),(-20,120),(7,7))
+            if len(heatmap) == 0:
+                xedges = xedge
+                yedges = yedge
+                heatmap = h
+            else:
+                heatmap = heatmap + h
+        heatmap = np.around(heatmap / float(len(IDnestData)),1)
+        
+        return heatmap,xedges,yedges
+        
+        
+        
+        
+    def exploration_heatmap(self,ID,heatmap,xedges,yedges):
+        '''
+        '''
+        heatmap = pd.DataFrame(np.flipud(heatmap),columns=xedges[1:],index=np.flipud(yedges[1:]))
+        xranges = ['{:.0f} - {:.0f}'.format(xedges[i],xedges[i+1]) for i in range(len(xedges)-1)]
+        yranges = ['{:.0f} - {:.0f}'.format(yedges[i],yedges[i+1]) for i in range(len(yedges)-1)]
+        f = plt.figure(figsize=(7,7))#figsize=(4,4))
+        ax = sns.heatmap(heatmap,vmin=0,vmax=1000,cmap=self.cm,annot=True,fmt='g',
+                         linewidth=0.5,cbar=False,xticklabels=xranges,yticklabels=np.flipud(yranges))
+        ax.set_xlabel('x in metres',fontweight='bold')
+        ax.set_ylabel('y in metres',fontweight='bold')
+        
+
+#        ax.set_xticks(xedges*ax.get_xlim()[1]/(2*np.pi))
+#        ax.set_yticks(yedges*ax.get_ylim()[1])
+        figName = self.osSep.join(self.resultFolder\
+                                  + ['-' +ID + '-exploration-expDuration.pdf'])
+        f.savefig(figName,bbox_inches='tight')
+        plt.show()
+#        f.savefig(figName[0:-4] + '-no-legend.pdf',bbox_inches = 'tight')
+                
+    def exploration_frequency(self,ID,alltX,alltY,xlimits,ylimits,bins):
+        '''
+        returns a grid of frequency of robots visiting different ranges in the
+        explored world.
+        alltX is all x locs of all robots
+        alltY is all y locs of all robots
+        xlimits is the limits on x axis (xmin,xmax)
+        ylimits is the limits on y axis (ymin,ymax)
+        bins is the division on x and y axis (xbin,ybin)
+        '''
+        xmin,xmax = xlimits
+        ymin,ymax = ylimits
+        
+        y = np.array(alltY.iloc[:,2:]) #extract values
+        y = list(y.ravel()) # convert to 1d
+        
+        x = np.array(alltX.iloc[:,2:]) #extract values
+        x = list(x.ravel()) # convert to 1d
+        
+        heatmap, xedges, yedges = \
+        np.histogram2d(x + [xmax,xmax,xmin,xmin],y + [ymax,ymin,ymax,ymin],
+                       range=[[xmin,xmax],[ymin,ymax]],bins=bins)
+        return heatmap, xedges, yedges
 #    def prepare_txy_robots_data(self,IDnestData,ID):
 #        '''
 #        Extract all x and y data for all robots in all simulations of specific ID
@@ -284,6 +393,47 @@ class NA_Results:
 #        '''
 #        xmin,xmax,ymin,ymax = edges
 #        y = alltY.iloc[:,]
+    def plot_targetPerTime2(self,targetPerTimeDict,col='t',coly='litter_count',d=None):
+        '''
+        loops through the list containing targets per time to view how each
+        algorithm performs its foraging activit
+        This version takes in which column to plot as function of time
+        '''
+        
+        f,ax1 = plt.subplots()
+#        ax1.set_facecolor('#FFFFFF')
+#        ax1.grid(False)
+        colors = np.linspace(0,mpl.cm.inferno.N-1,len(targetPerTimeDict),endpoint=True,dtype=np.int)
+        for i,ID in enumerate(targetPerTimeDict):
+            data = targetPerTimeDict[ID]
+            ax1.plot(data[col],data[coly],label=ID,linewidth=3,color=mpl.cm.inferno(colors[i]))#,cmap='inferno')
+#            data.plot(x=col,y=coly,label=ID,linewidth=3,
+#                      cmap='inferno',ax=ax1)
+#            ax1.plot(data[col],data['litter_count'],label=IDlabel,c=self.cm)
+        
+        
+        legend = ax1.legend(loc='center left',bbox_to_anchor=(1.05,0.5),
+            title='Nest Vel',ncol=1,fontsize=18)
+        plt.setp(legend.get_title(),fontsize=18,fontweight='bold')
+        
+        if coly == 'litter_count':
+            ax1.set_ylabel('Found Targets',fontsize=18,fontweight='bold')
+        elif coly == d:
+            ax1.set_ylabel('Robots within ${}m$'.format(d),fontsize=18,fontweight='bold')
+        else:
+            ax1.set_ylabel(coly,fontsize=18,fontweight='bold')
+        
+        if col == 't':
+            ax1.set_xlabel('Time in seconds',fontsize=18,fontweight='bold')
+        elif col == 'nest_dst':
+            ax1.set_xlabel('Distance in metres',fontsize=18,fontweight='bold')
+        else:
+            ax1.set_xlabel(col,fontsize=18)
+        ax1.tick_params(axis='both',which='major',labelsize=18)
+        figName = self.osSep.join(self.resultFolder\
+                                  + ['{}-vs-{}.pdf'.format(coly,col)])
+        f.savefig(figName,bbox_inches='tight') 
+        
     def plot_targetPerTime(self,targetPerTimeDict,col='t',d=16):
         '''
         loops through the list containing targets per time to view how each
@@ -345,7 +495,7 @@ class NA_Results:
             t = str(t)
             
         mean_df2,ci95_df2 = mean_df.copy(deep=True),ci95_df.copy(deep=True)
-        cols = mean_df2.columns.to_list()
+        cols = list(mean_df2.columns)
         
         for i,j in enumerate(cols):
             if 'M1-D1' in j:
@@ -414,7 +564,8 @@ class NA_Results:
             
 #            
             self.plot_robots_loc(ID,alltX,alltY)
-            
+#            plot_robots_loc(self,ID,alltX,alltY,showFig=False,lims=[],
+#                        bounds=[10,15,20],boundstyle='-.')
             #get dists columns and t column
             allDistData = self.nest_t_n_dsts(ID,col,IDnestData)
 #            return allDistData
@@ -446,12 +597,13 @@ class NA_Results:
                         1.96 / np.sqrt(squished_dsts.shape[0])
             ci95_df = pd.concat([ci95_df,dfci95],axis=1,sort=False)
         
-        cols = mean_df.columns
+#        cols = mean_df.columns
         #filter out only noisy and random walk results
-        cols = [i for i in cols if 'N100' in i or 'M1-D1' in i or 'AtD' in i]
+#        cols = [i for i in cols if 'N100' in i or 'M1-D1' in i or 'AtD' in i]
         #plot stacked bar plot of average number of robots per range
         #through out all experiments
 #        self.plot_stacked(mean_df[cols].T,col)
+        
         sns_heatmap_data = []#self.prepare_sns_heatmap_data(mean_df)
         
         return mean_df,ci95_df,sns_heatmap_data
@@ -532,19 +684,30 @@ class NA_Results:
         latexFmt.sort_index(axis=1,inplace=True)
         latexFmt.to_latex(filename,encoding='utf-8',escape=False)
     
-    def mean_ci95_tStep(self,analysis,filename='',t=[100,500,700,1000]):
+    def mean_ci95_tStep(self,analysis,filename='',t=[200,400,600,800,1000]):
         '''
         loop through time steps to create a mean and ci95 df
         '''
-        mean_dfs,ci95_dfs = pd.DataFrame(),pd.DataFrame()
+        mean_dfs,ci95_dfs,mean_nrobDF,ci95_nrobDF = \
+        pd.DataFrame(),pd.DataFrame(),pd.DataFrame(),pd.DataFrame()
         
         for i in t:
-             m,c,_ = analysis(t=i)   
-             mean_dfs = pd.concat([mean_dfs,m])
-             ci95_dfs = pd.concat([ci95_dfs,c])
+            try:
+                m,c,mr,cr,_ = analysis(t=i)   
+            except:
+                continue
+            mean_dfs = pd.concat([mean_dfs,m])
+            ci95_dfs = pd.concat([ci95_dfs,c])
+            
+            mean_nrobDF = pd.concat([mean_nrobDF,mr])
+            ci95_nrobDF = pd.concat([ci95_nrobDF,cr])
+            
         if len(filename) > 0:
             self.df_to_tex(filename,mean_dfs,ci95_dfs)
-        return mean_dfs,ci95_dfs
+            
+            self.df_to_tex(filename+'-nrob',mean_nrobDF,ci95_nrobDF)
+        
+        return mean_dfs,ci95_dfs,mean_nrobDF,ci95_nrobDF
     
     def plot_col_vs_rnge(self,ID,col,squished_dsts,showFig=False):
         '''
@@ -554,6 +717,7 @@ class NA_Results:
         f = plt.figure()
         ax = f.add_axes([0.1,0.1,0.5,0.7])
         ax.set_ylim([0,10])
+        ax.set_xlim([0, squished_dsts[col].max()*1.05])
         axStack = f.add_axes([0.61,0.1,0.1,0.7])
         axStack.set_ylim([0,10])
         cols = [i for i in squished_dsts.columns if 't' not in i]
@@ -584,6 +748,11 @@ class NA_Results:
                                   + [ID + '_' + col +'.pdf'])
         
         f.savefig(figName,bbox_inches='tight')
+        
+        #no legend version
+        axStack.legend().set_visible(False)
+        f.savefig(figName[0:-4] + '-no-legend.pdf',bbox_inches='tight')
+        
         plt.title(ID)
         if not showFig:
             plt.close()
@@ -664,7 +833,7 @@ class NA_Results:
         
         #CREATE MULTIINDEX DF to store the values
         #ignore last boundrange index used for mean_df
-        dists = [int(i.split(' - ')[1]) for i in mean_df.index.to_list()]
+        dists = [int(i.split(' - ')[1]) for i in list(mean_df.index)]
         col_index = pd.MultiIndex.from_product([NAs,Ds])
         idx = pd.MultiIndex.from_product([dists,Ms])
         
@@ -694,16 +863,24 @@ class NA_Results:
                 heatData.sort_index(axis=0,inplace=True,ascending=False)
                 heatData.sort_index(axis=1,inplace=True,ascending=True)
                 
-                f, (cbar_ax,ax) = plt.subplots(2,gridspec_kw=grid_kws,figsize=(3,3))
+                f, (cbar_ax,ax) = plt.subplots(2,gridspec_kw=grid_kws,figsize=(4,4))
                 ax = sns.heatmap(heatData,linewidths=0.5,vmin=0,
                     ax=ax,cbar_ax=cbar_ax,cbar_kws={'orientation':'horizontal'},
-                    annot=True,cmap="plasma",vmax=10)
+                    annot=True,cmap=self.cm,vmax=10)
                 
                 ax.set_xlabel('Divisors',fontweight='bold')
                 ax.set_ylabel('Multipliers',fontweight='bold')
                 figName = self.osSep.join(self.resultFolder \
                                           + [na +'-'+ str(dst) + '.pdf'])
                 f.savefig(figName,bbox_inches='tight')
+                
+                #no colorbar version
+                f = plt.figure(figsize=(4,4))
+                ax = sns.heatmap(heatData,vmin=0,vmax=10,cmap=self.cm,annot=True,
+                                 linewidth=0.5,cbar=False)
+                ax.set_xlabel('Divisors',fontweight='bold')
+                ax.set_ylabel('Multipliers',fontweight='bold')
+                f.savefig(figName[0:-4] + '-no-legend.pdf',bbox_inches = 'tight')
                 plt.close()
         return sns_heatmap_df
     
@@ -712,7 +889,8 @@ class NA_Results:
         
         #rows represent different ranges of distances.
         
-    def plot_robots_loc(self,ID,alltX,alltY,showFig=False):
+    def plot_robots_loc(self,ID,alltX,alltY,showFig=False,lims=[],
+                        bounds=[10,15,20],boundtype=None,boundstyle='-.',nest_path=True):
         '''
         create 10 scatter plots of robot xy locations.
         '''
@@ -728,22 +906,37 @@ class NA_Results:
             ty = alltY.iloc[step,:]
 #            print(tx)
 #            print(ty)
-            t = tx[0]
-            nest_x = tx[1]
-            nest_y = ty[1]
+            t = tx.filter(regex='^t$')
+            nest_x = tx.filter(regex='nest_x').iloc[0]
+            nest_y = ty.filter(regex='nest_y').iloc[0]
             f = plt.figure()
             #plot boundaries of world
             ax = plt.gca()
-            bound10 = plt.Circle((nest_x,nest_y),10,linewidth=2,label='10m',
-                                 color=self.colors_dict['bound10'],fill=False)
-            bound15 = plt.Circle((nest_x,nest_y),15,linewidth=2,label='15m',
-                                 color=self.colors_dict['bound15'],fill=False)
-            bound20 = plt.Circle((nest_x,nest_y),20,linewidth=2,label='20m',
-                                 color=self.colors_dict['bound20'],fill=False)
-            
-            ax.add_patch(bound10)
-            ax.add_patch(bound15)
-            ax.add_patch(bound20)
+            if len(bounds) == 3 and boundtype == 'circle':
+                bound10 = plt.Circle((nest_x.iloc[0],nest_y.iloc[0]),bounds[0],linewidth=3,
+                                     label='${}m$'.format(bounds[0]),linestyle='-',
+                                     color=self.colors_dict['bound10'],fill=False)
+                bound15 = plt.Circle((nest_x.iloc[0],nest_y.iloc[0]),bounds[1],linewidth=3,
+                                     label='${}m$'.format(bounds[1]),linestyle='-.',
+                                     color=self.colors_dict['bound15'],fill=False)
+                bound20 = plt.Circle((nest_x.iloc[0],nest_y).iloc[0],bounds[2],linewidth=3,
+                                     label='${}m$'.format(bounds[2]),linestyle=':',
+                                     color=self.colors_dict['bound20'],fill=False)
+                
+                ax.add_patch(bound10)
+                ax.add_patch(bound15)
+                ax.add_patch(bound20)
+            elif len(bounds) == 1  and boundtype == 'circle':
+                bound15 = plt.Circle((nest_x,nest_y),bounds[0],linewidth=3,label='${}m$'.format(bounds[0]),
+                                     linestyle=boundstyle,
+                                     color=self.colors_dict['bound15'],fill=False)
+                ax.add_patch(bound15)
+            elif boundtype == 'square':
+                xy1,xy2,width,height = bounds
+                rectWall = plt.Rectangle((xy1,xy2), width, height,fill=False,color='k',linewidth=3,
+                              label='${}m$'.format(width),linestyle='-')
+                
+                ax.add_patch(rectWall)
             
             ax.axis('square')
             
@@ -752,10 +945,25 @@ class NA_Results:
                 ax.axis([-40, 110, -40, 40])
             else:
                 ax.axis([-40, 40, -40, 40])
+            
+            if len(lims) > 0:
+                ax.axis(lims)
+            #plot path taken by nest robot
+            hist = 130#history of nest locations to include
+            if nest_path:
+                if step < hist:
+                    plt.plot(alltX.iloc[0:step,1],alltY.iloc[0:step,1],
+                         linestyle=':',color=self.colors_dict['nest'],label='nest path')
+                else:
+                    plt.plot(alltX.iloc[step-hist:step,1],alltY.iloc[step-hist:step,1],
+                         linestyle=':',color=self.colors_dict['nest'],label='nest path')
+            
             # ty starts from location 3 because yaw of nest in included.:(
-            plt.plot(tx[2:],ty[2:],'o',color=self.colors_dict['robots'],
-                     label='robots',markerfacecolor=self.colors_dict['robots'])#,markersize=1)
-            plt.plot(nest_x,nest_y,'o',color=self.colors_dict['nest'],
+            plt.plot(tx.filter(regex='litter*'),ty.filter(regex='litter*'),marker='*',linestyle='',
+                     label='litter',color=self.colors_dict['litter'],markersize=7)
+            plt.plot(tx.filter(regex='m_4wrobot*'),ty.filter(regex='m_4wrobot*'),marker='o',linestyle='',color=self.colors_dict['robots'],
+                     label='robots',markerfacecolor=self.colors_dict['robots'],markersize=7)
+            plt.plot(nest_x,nest_y,marker='X',markersize=15,linestyle='',color=self.colors_dict['nest'],
                      label='nest',markerfacecolor=self.colors_dict['nest'])#,markersize=1)
             
 #            #restrict to 25 by 25
@@ -768,12 +976,23 @@ class NA_Results:
             pathlib.Path(figFolder).mkdir(parents=False,exist_ok=True)#make directory to store images
             
             figName = self.osSep.join([figFolder,ID + '_' + str(t) +'.jpg'])
+#            figName = self.osSep.join(self.resultFolder\
+#                                  + [ID + '_' + str(t.iloc[0]) +'.pdf'])
         
-            f.savefig(figName,bbox_inches='tight')
-            plt.title(ID + '_' + str(t))
+            
             if not showFig:
+                f.savefig(figName,bbox_inches='tight')
+                #no legend version
+                plt.legend().set_visible(False)
+                f.savefig(figName[0:-4] + '-no-legend.pdf',bbox_inches='tight')
                 plt.close()
                 
+            
+            if showFig:
+                plt.title(ID + '_' + str(t.iloc[0]))
+            
+    
+    
     def plot_heatmap(self,ID,alltX,alltY,showFig=False):
         '''
         create heatmap of the simulation instance, showing 
